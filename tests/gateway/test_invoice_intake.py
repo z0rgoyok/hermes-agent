@@ -91,6 +91,24 @@ def test_durable_queue_dedup_revisions_and_recovery(tmp_path):
     assert not process_one(reopened)
 
 
+def test_provider_results_and_question_batch_review_are_durable(tmp_path):
+    store = InvoiceStore(tmp_path)
+    doc = store.ingest(b"photo", ".jpg", source(), {"message_id": "12"}, batch="batch")
+    data = extraction().model_dump(mode="json")
+    data["uncertainties"] = [{
+        "field": "client", "original": "Алиса", "alternatives": ["Азиза"], "explanation": "почерк"}]
+    ambiguous = InvoiceExtractionV1.model_validate(data)
+    process_one(store, lambda *_: ambiguous)
+    store.record_result(doc, "gemini", extraction().model_copy(update={"client": "Алиса"}).model_dump(mode="json"))
+    store.record_result(doc, "grok", extraction().model_copy(update={"client": "Азиза"}).model_dump(mode="json"))
+    store.ask(doc, "-100123", "12", "Какой клиент?")
+    assert [row["provider"] for row in store.card(doc)["recognition_results"]] == ["gemini", "grok"]
+    assert store.review_questions("batch") == 1
+    claimed = store.claim()
+    assert claimed["id"] == doc
+    assert json.loads(claimed["candidates"]) == ["Фабрика Азиза", "Азиза"]
+
+
 def test_failure_does_not_block_other_images_and_auth_pauses(tmp_path):
     store = InvoiceStore(tmp_path)
     one = store.ingest(b"one", ".jpg", source(), {"message_id": "1"})

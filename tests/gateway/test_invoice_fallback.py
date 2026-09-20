@@ -13,7 +13,7 @@ def setup_job(tmp_path):
     store = InvoiceStore(tmp_path)
     identifier = store.ingest(b"image", ".jpg", {"chat_id": "1"}, {"message_id": "2"}, batch="batch")
     job = store.claim()
-    card = dict(document_type="invoice", client="Азиза", date=None, total="1100",
+    card = dict(document_type="invoice", client="Азиза", date="2026-09-20", total="1100",
                 uncertainties=[], visual_evidence="Рукопись")
     valid = json.dumps({"documents": [{"document_id": identifier, "card": card}]})
     return store, job, valid
@@ -73,3 +73,36 @@ def test_grok_repairs_with_history_and_retry_preserves_done(tmp_path, monkeypatc
     assert store.retry_errors("batch") == int(not success)
     assert len(store.card(job["id"])["revisions"]) == int(success)
     assert len(store.card(job["id"])["recognition_attempts"]) == 4
+
+
+def test_ambiguous_gemini_card_gets_independent_grok_result(tmp_path, monkeypatch):
+    store, job, _ = setup_job(tmp_path)
+    gemini = worker.InvoiceExtractionV1.model_validate(dict(
+        document_type="invoice", client="Алиса", date="2026-09-20", total="1100",
+        uncertainties=[{"field": "client", "original": "Алиса", "alternatives": ["Азиза"],
+                        "explanation": "неоднозначная рукописная буква"}], visual_evidence="рукопись"))
+    grok = worker.InvoiceExtractionV1.model_validate(dict(
+        document_type="invoice", client="Азиза", date="2026-09-20", total="1100",
+        uncertainties=[], visual_evidence="видны буквы А-з-и-з-а"))
+    monkeypatch.setattr(worker, "recognize_gemini_batch", Mock(return_value={job["id"]: gemini}))
+    from gateway import invoice_grok
+    second = Mock(return_value={job["id"]: grok})
+    monkeypatch.setattr(invoice_grok, "recognize_grok_batch", second)
+    cards = worker.recognize_batch(store, [job])
+    assert cards[job["id"]].client == "Алиса"
+    second.assert_called_once_with(store, [job])
+
+
+def test_failed_second_opinion_keeps_gemini_card_available(tmp_path, monkeypatch):
+    store, job, _ = setup_job(tmp_path)
+    ambiguous = worker.InvoiceExtractionV1.model_validate(dict(
+        document_type="invoice", client=None, date="2026-09-20", total="1100",
+        uncertainties=[{"field": "client", "original": "Алиса", "alternatives": ["Азиза"],
+                        "explanation": "неоднозначная рукописная буква"}], visual_evidence="рукопись"))
+    monkeypatch.setattr(worker, "recognize_gemini_batch", Mock(return_value={job["id"]: ambiguous}))
+    from gateway import invoice_grok
+    monkeypatch.setattr(invoice_grok, "recognize_grok_batch",
+                        Mock(side_effect=worker.RecognitionError("Grok authorization required", auth=True)))
+    cards = worker.recognize_batch(store, [job])
+    assert cards[job["id"]].client is None
+    assert store.control("paused") == "Grok authorization required"

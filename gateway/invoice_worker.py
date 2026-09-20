@@ -67,9 +67,15 @@ def recognize(store: InvoiceStore, job: dict) -> InvoiceExtractionV1:
     return recognize_batch(store, [job])[job["id"]]
 
 
+def needs_second_opinion(card: InvoiceExtractionV1) -> bool:
+    return (card.document_type == "unreadable" or bool(card.uncertainties)
+            or (card.document_type == "invoice" and any(
+                getattr(card, field) is None for field in ("client", "date", "total"))))
+
+
 def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceExtractionV1]:
     try:
-        return recognize_gemini_batch(store, jobs)
+        cards = recognize_gemini_batch(store, jobs)
     except RecognitionError as exc:
         for job in jobs:
             store.record_attempt(job["id"], "gemini", "failed", str(exc))
@@ -78,6 +84,19 @@ def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceE
             raise
         from gateway.invoice_grok import recognize_grok_batch
         return recognize_grok_batch(store, jobs)
+    second_opinion = [job for job in jobs if job.get("candidates") or needs_second_opinion(cards[job["id"]])]
+    if second_opinion:
+        from gateway.invoice_grok import recognize_grok_batch
+        try:
+            recognize_grok_batch(store, second_opinion)
+        except RecognitionError as exc:
+            # Gemini cards remain useful and must not hold up unrelated documents.
+            # The failed second opinion is durable in recognition_attempts and the
+            # still-partial card remains eligible for an explicit review retry.
+            log.warning("Grok second opinion deferred: %s", exc)
+            if exc.auth:
+                store.control("paused", str(exc))
+    return cards
 
 
 def validation_feedback(exc: Exception) -> str:
@@ -146,6 +165,7 @@ def recognize_gemini_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, I
                 cards = parse_batch_response(stdout, jobs)
                 for job in jobs:
                     store.record_attempt(job["id"], "gemini", "success", f"corrections={correction}")
+                    store.record_result(job["id"], "gemini", cards[job["id"]].model_dump(mode="json"))
                 return cards
             except (ValueError, TypeError) as exc:
                 for job in jobs:
@@ -222,7 +242,7 @@ def run_pool(store, workers, batch_size):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["run", "list", "get", "review", "resume", "seal", "import", "retry-errors", "ask"])
+    parser.add_argument("action", choices=["run", "list", "get", "review", "review-questions", "resume", "seal", "import", "retry-errors", "ask"])
     parser.add_argument("--id")
     parser.add_argument("--chat-id")
     parser.add_argument("--message-id")
@@ -239,6 +259,10 @@ def main():
     elif args.action == "review":
         store.review(args.id, args.candidates)
         print(json.dumps({"queued": args.id}))
+    elif args.action == "review-questions":
+        if not args.id:
+            parser.error("review-questions requires an album --id")
+        print(json.dumps({"requeued": store.review_questions(args.id)}))
     elif args.action == "resume":
         store.control("paused", "")
     elif args.action == "seal":

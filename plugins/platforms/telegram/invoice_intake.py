@@ -110,7 +110,7 @@ async def delivery_loop(adapter):
             paused = store.control("paused")
             if paused and store.control("pause_notice") != paused:
                 for chat in adapter.config.extra.get("invoice_intake_chats", []):
-                    result = await adapter.send(str(chat), "Распознавание фото приостановлено: требуется авторизация Gemini. Фото сохранены в очереди.")
+                    result = await adapter.send(str(chat), "Распознавание фото приостановлено: требуется авторизация распознающей модели. Фото сохранены в очереди.")
                     if not result.success:
                         raise RuntimeError("pause notice delivery failed")
                 store.control("pause_notice", paused)
@@ -138,7 +138,8 @@ async def publish_progress(adapter, store):
         elif store.control("paused"):
             text += "\n⏸ Требуется авторизация распознавания. Фото сохранены."
         elif album["processing"]:
-            text += f"\n⏳ Обрабатывается фото: {album['processing']}. Gemini → при ошибке Grok; до 3 исправлений отчёта."
+            text += (f"\n⏳ Обрабатывается фото: {album['processing']}. Gemini; для спорных карточек "
+                     "независимый просмотр Grok; до 3 исправлений отчёта каждой модели.")
         else:
             text += "\n⏳ Ожидает распознавания."
         key = "progress:" + album["id"]

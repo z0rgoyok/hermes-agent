@@ -39,6 +39,9 @@ class InvoiceStore:
                 CREATE TABLE IF NOT EXISTS recognition_attempts (
                     document_id TEXT NOT NULL, provider TEXT NOT NULL, outcome TEXT NOT NULL,
                     detail TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS recognition_results (
+                    document_id TEXT NOT NULL, provider TEXT NOT NULL, card TEXT NOT NULL,
+                    created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS questions (
                     id TEXT PRIMARY KEY, document_id TEXT NOT NULL, chat_id TEXT NOT NULL,
                     message_id TEXT NOT NULL, text TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
@@ -141,6 +144,11 @@ class InvoiceStore:
             db.execute("INSERT INTO recognition_attempts VALUES (?,?,?,?,?)",
                        (document, provider, outcome, detail, time.time()))
 
+    def record_result(self, document: str, provider: str, card: dict):
+        with self.db() as db:
+            db.execute("INSERT INTO recognition_results VALUES (?,?,?,?)",
+                       (document, provider, json.dumps(card, ensure_ascii=False), time.time()))
+
     def ask(self, document: str, chat: str, message: str, text: str):
         if not text.strip() or len(text.encode("utf-16-le")) // 2 > 900:
             raise ValueError("question must contain 1–900 Telegram caption characters")
@@ -193,6 +201,30 @@ class InvoiceStore:
             db.execute("UPDATE albums SET version=version+1,changed=? WHERE id IN (SELECT album_id FROM messages WHERE document_id=?)",
                        (time.time(), document))
 
+    def review_questions(self, album: str):
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute("""SELECT DISTINCT d.id,r.card FROM documents d
+                JOIN messages m ON m.document_id=d.id
+                JOIN questions q ON q.document_id=d.id
+                JOIN revisions r ON r.document_id=d.id AND r.revision=d.revision
+                WHERE m.album_id=? AND d.status IN ('ready','partial','error')""", (album,)).fetchall()
+            for row in rows:
+                card = json.loads(row["card"])
+                candidates = []
+                if card.get("client"):
+                    candidates.append(card["client"])
+                for uncertainty in card.get("uncertainties", []):
+                    if uncertainty.get("field") == "client":
+                        candidates.extend(uncertainty.get("alternatives", []))
+                candidates = list(dict.fromkeys(str(value)[:500] for value in candidates if value))[:5]
+                db.execute("""UPDATE documents SET status='pending',attempts=0,available=0,candidates=?
+                    WHERE id=?""", (json.dumps(candidates or ["independent second opinion"]), row["id"]))
+            if rows:
+                db.execute("UPDATE albums SET version=version+1,changed=? WHERE id=?",
+                           (time.time(), album))
+            return len(rows)
+
     def card(self, document: str):
         with self.db() as db:
             row = db.execute("SELECT id,status,revision,error FROM documents WHERE id=?", (document,)).fetchone()
@@ -201,6 +233,10 @@ class InvoiceStore:
             result = dict(row)
             result["recognition_attempts"] = [dict(r) for r in db.execute(
                 "SELECT provider,outcome,detail,created FROM recognition_attempts WHERE document_id=? ORDER BY created", (document,))]
+            result["recognition_results"] = [dict(r) for r in db.execute(
+                "SELECT provider,card,created FROM recognition_results WHERE document_id=? ORDER BY created", (document,))]
+            for recognition in result["recognition_results"]:
+                recognition["card"] = json.loads(recognition["card"])
             result["revisions"] = [dict(r) for r in db.execute(
                 "SELECT revision,card,warnings,created FROM revisions WHERE document_id=? ORDER BY revision", (document,))]
             for revision in result["revisions"]:

@@ -71,4 +71,5 @@ def recognize_grok_batch(store, jobs):
             else:
                 for job in jobs:
                     store.record_attempt(job["id"], "grok", "success", f"corrections={correction}")
+                    store.record_result(job["id"], "grok", cards[job["id"]].model_dump(mode="json"))
                 return cards
