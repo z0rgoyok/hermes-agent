@@ -81,6 +81,7 @@ async def delivery_loop(adapter):
     store = InvoiceStore(get_hermes_home())
     while True:
         try:
+            await publish_progress(adapter, store)
             paused = store.control("paused")
             if paused and store.control("pause_notice") != paused:
                 for chat in adapter.config.extra.get("invoice_intake_chats", []):
@@ -94,3 +95,36 @@ async def delivery_loop(adapter):
         except Exception as exc:
             log.error("Invoice delivery deferred: %s", type(exc).__name__)
         await asyncio.sleep(2)
+
+
+async def publish_progress(adapter, store):
+    """Persist the Telegram receipt so progress resumes in place after restart."""
+    allowed = {str(c) for c in adapter.config.extra.get("invoice_intake_chats", [])}
+    for album in store.album_progress():
+        source = json.loads(album["source"])
+        chat = str(source["chat_id"])
+        if chat not in allowed:
+            continue
+        done = album["ready"] + album["partial"] + album["errors"]
+        text = f"📷 Принято фото: {album['total']}. Распознано: {done} из {album['total']}."
+        if done == album["total"]:
+            text += (f"\nГотово: {album['ready']}; спорных: {album['partial']}; "
+                     f"ошибок: {album['errors']}.\nКарточки передаются Hermes для общей сводки.")
+        elif store.control("paused"):
+            text += "\n⏸ Требуется авторизация Gemini. Фото сохранены."
+        elif album["processing"]:
+            text += "\n⏳ Gemini читает очередное фото."
+        else:
+            text += "\n⏳ Ожидает распознавания."
+        key = "progress:" + album["id"]
+        previous = json.loads(store.control(key) or "{}")
+        if previous.get("text") == text and previous.get("version") == album["version"]:
+            continue
+        metadata = {"thread_id": source["thread_id"]} if source.get("thread_id") else None
+        if previous.get("message_id"):
+            result = await adapter.edit_message(chat, previous["message_id"], text, metadata=metadata)
+        else:
+            result = await adapter.send(chat, text, metadata=metadata)
+        if result.success and result.message_id:
+            store.control(key, json.dumps({"message_id": str(result.message_id), "text": text,
+                                           "version": album["version"]}))

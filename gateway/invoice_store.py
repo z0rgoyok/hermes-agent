@@ -157,6 +157,16 @@ class InvoiceStore:
                     WHERE m.album_id=a.id AND d.status IN ('pending','processing'))""", (time.time() - 3,)).fetchall()
             return [dict(r) for r in rows]
 
+    def album_progress(self):
+        with self.db() as db:
+            return [dict(r) for r in db.execute("""SELECT a.id,a.source,a.version,
+                count(*) AS total,
+                sum(d.status='ready') AS ready, sum(d.status='partial') AS partial,
+                sum(d.status='error') AS errors, sum(d.status='processing') AS processing
+                FROM albums a JOIN messages m ON m.album_id=a.id
+                JOIN documents d ON d.id=m.document_id
+                WHERE a.sealed=1 GROUP BY a.id""")]
+
     def album_cards(self, album: str):
         with self.db() as db:
             ids = [r[0] for r in db.execute("SELECT DISTINCT document_id FROM messages WHERE album_id=?", (album,))]

@@ -353,7 +353,7 @@
 | [test_internal_notification_marker.py](./test_internal_notification_marker.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | bcec76bf9c6dffa50b3b5ef92d9b194c805ff919 |
 | [test_interrupt_keeps_parked_internal_wake.py](./test_interrupt_keeps_parked_internal_wake.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | deec07cd1fa0662f4560b300c79715d3617e192a |
 | [test_interrupt_key_match.py](./test_interrupt_key_match.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 79c39ee7bf955bd98967d3d3eb75f81028f4e2e8 |
-| [test_invoice_intake.py](./test_invoice_intake.py) | Проверяет очередь после перезапуска, дедупликацию, ревизии, ошибки Gemini и текстовую доставку через Telegram adapter. | d030e8f247ca7640f240c7e25a5b9dc0872307ac |
+| [test_invoice_intake.py](./test_invoice_intake.py) | Проверяет очередь после перезапуска, дедупликацию, ревизии, ошибки Gemini и текстовую доставку через Telegram adapter. | fc0e190aa06c6064bcd35f8747c3dab41d469345 |
 | [test_irc_adapter.py](./test_irc_adapter.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 7db8e115d4a16914d140e0f702dfc49ca54db0d8 |
 | [test_kanban_auto_decompose_live.py](./test_kanban_auto_decompose_live.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 955f91f1270a2be5700417e461ed33fd27c0145f |
 | [test_kanban_auto_decompose_secret_scope.py](./test_kanban_auto_decompose_secret_scope.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 86f725e4a4ee28fd11b793759e30a0208f209563 |

@@ -11,6 +11,30 @@ from gateway.invoice_worker import RecognitionError, parse_response, process_one
 from plugins.platforms.telegram.invoice_intake import deliver_ready, intercept
 
 
+@pytest.mark.asyncio
+async def test_progress_edits_one_persisted_message(tmp_path):
+    from plugins.platforms.telegram.invoice_intake import publish_progress
+    store = InvoiceStore(tmp_path)
+    store.ingest(b"a", ".jpg", source(), {"message_id": "1", "media_group_id": "album"})
+    adapter = SimpleNamespace(
+        config=SimpleNamespace(extra={"invoice_intake_chats": ["-100123"]}),
+        send=AsyncMock(return_value=SimpleNamespace(success=True, message_id="99")),
+        edit_message=AsyncMock(return_value=SimpleNamespace(success=True, message_id="99")),
+    )
+    await publish_progress(adapter, store)
+    await publish_progress(adapter, InvoiceStore(tmp_path))
+    assert adapter.send.await_count == 1
+    assert adapter.edit_message.await_count == 0
+    store.ingest(b"b", ".jpg", source(), {"message_id": "2", "media_group_id": "album"})
+    process_one(store, lambda *_: extraction())
+    await publish_progress(adapter, store)
+    assert "1 из 2" in adapter.edit_message.call_args.args[2]
+    process_one(store, lambda *_: extraction())
+    await publish_progress(adapter, store)
+    assert "2 из 2" in adapter.edit_message.call_args.args[2]
+    assert adapter.send.await_count == 1
+
+
 def extraction(**changes):
     return InvoiceExtractionV1.model_validate(dict(
         schema_version=1, document_type="invoice", client="Фабрика Азиза", date="2026-09-20",
