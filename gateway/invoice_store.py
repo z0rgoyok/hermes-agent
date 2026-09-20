@@ -95,15 +95,21 @@ class InvoiceStore:
             return row[0] if row else ""
 
     def claim(self):
+        jobs = self.claim_batch(1)
+        return jobs[0] if jobs else None
+
+    def claim_batch(self, limit=5):
+        if not 1 <= limit <= 5:
+            raise ValueError("batch size must be between 1 and 5")
         if self.control("paused"):
-            return None
+            return []
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM documents WHERE status='pending' AND available<=? ORDER BY rowid LIMIT 1",
-                             (time.time(),)).fetchone()
-            if row:
+            rows = db.execute("SELECT * FROM documents WHERE status='pending' AND available<=? ORDER BY rowid LIMIT ?",
+                              (time.time(), limit)).fetchall()
+            for row in rows:
                 db.execute("UPDATE documents SET status='processing',attempts=attempts+1 WHERE id=?", (row["id"],))
-                return dict(row)
+            return [dict(row) for row in rows]
 
     def finish(self, document: str, card: dict, warnings: list[str]):
         with self.db() as db:

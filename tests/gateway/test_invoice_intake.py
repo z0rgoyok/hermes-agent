@@ -94,6 +94,44 @@ def test_schema_only_business_fields_and_ambiguous_client():
         parse_response("not JSON")
 
 
+def test_batch_response_exact_identity_and_no_cross_assignment():
+    from gateway.invoice_worker import parse_batch_response
+    card = extraction().model_dump(mode="json")
+    jobs = [{"id": "a"}, {"id": "b"}]
+    rows = [{"document_id": "b", "card": dict(card, client="Б")},
+            {"document_id": "a", "card": dict(card, client="А")}]
+    result = parse_batch_response(json.dumps({"documents": rows}), jobs)
+    assert result["a"].client == "А" and result["b"].client == "Б"
+    for bad in (rows[:1], rows + rows[:1], rows + [{"document_id": "c", "card": card}]):
+        with pytest.raises(ValueError):
+            parse_batch_response(json.dumps({"documents": bad}), jobs)
+
+
+def test_five_parallel_batches_claim_disjoint_jobs_and_preserve_completed(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+    from gateway.invoice_worker import process_batch
+    store = InvoiceStore(tmp_path)
+    ids = {store.ingest(str(i).encode(), ".jpg", source(), {"message_id": str(i)}) for i in range(27)}
+    barrier, lock, seen = Barrier(5), Lock(), []
+
+    def reader(_, jobs):
+        with lock:
+            seen.extend(job["id"] for job in jobs)
+        barrier.wait(timeout=10)
+        assert len(jobs) == 5
+        return {job["id"]: extraction() for job in jobs}
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = [pool.submit(process_batch, store, 5, reader) for _ in range(5)]
+        assert all(f.result(timeout=15) for f in futures)
+    assert len(seen) == len(set(seen)) == 25
+    remaining = store.claim_batch(5)
+    assert {job["id"] for job in remaining} == ids - set(seen)
+    store.recover()
+    assert {job["id"] for job in store.claim_batch(5)} == ids - set(seen)
+
+
 @pytest.mark.asyncio
 async def test_intake_any_author_and_text_only_album_delivery(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))

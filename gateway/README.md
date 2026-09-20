@@ -39,8 +39,8 @@
 | [hosted_rooms_common.py](./hosted_rooms_common.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 5bd58e5c3f24651fe30b842c546aac8104a31796 |
 | [hosted_rooms_legacy_import.py](./hosted_rooms_legacy_import.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 3aae609e073109588e413b025b6f97a802578b89 |
 | [invoice_schema.py](./invoice_schema.py) | Схема карточки: клиент, дата, итог; проверка типов и неясностей результата Gemini. | eff0169149e5e22e8da3e5233270fb751b7a5171 |
-| [invoice_store.py](./invoice_store.py) | SQLite-очередь и оригиналы: дедупликация Telegram-событий, ревизии чтения и состояние передачи альбомов. | b36504238a8c51e2ddd5ac91f2004a20d89017b0 |
-| [invoice_worker.py](./invoice_worker.py) | Последовательный Gemini worker через Agy; CLI просмотра, повторного чтения, импорта и восстановления очереди. | 870ef1aa3d0102597fbeee8a2fb0b5e0d6e32fa5 |
+| [invoice_store.py](./invoice_store.py) | SQLite-очередь и оригиналы: дедупликация Telegram-событий, ревизии чтения и состояние передачи альбомов. | 7057395eda8c85b59ae4b59ce43ff5083aaf7e18 |
+| [invoice_worker.py](./invoice_worker.py) | Пять параллельных Agy/Gemini обработчиков по пять фото: строгая привязка карточек к ID, изолированные workspace и CLI управления очередью. | 6c5889569c6e82121e9990dc6b1b673ac2123e4e |
 | [kanban_watchers.py](./kanban_watchers.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | abe89a0d96c4221d04669e3df4388d80b97881ef |
 | [kanban_watchers_common.py](./kanban_watchers_common.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | c690c9f8befdd5ce7869cb8a3d5d9a610fb62d83 |
 | [kanban_watchers_dispatcher.py](./kanban_watchers_dispatcher.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 5b3ef08fdbbd4158c7a804d2c8cf36bfc3a1a5aa |

@@ -113,7 +113,7 @@ async def publish_progress(adapter, store):
         elif store.control("paused"):
             text += "\n⏸ Требуется авторизация Gemini. Фото сохранены."
         elif album["processing"]:
-            text += "\n⏳ Gemini читает очередное фото."
+            text += f"\n⏳ Gemini обрабатывает фото: {album['processing']}."
         else:
             text += "\n⏳ Ожидает распознавания."
         key = "progress:" + album["id"]
