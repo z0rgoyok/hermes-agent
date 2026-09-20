@@ -45,6 +45,26 @@ def source():
     return {"platform": "telegram", "chat_id": "-100123", "chat_type": "group", "user_id": "7"}
 
 
+@pytest.mark.asyncio
+async def test_document_question_replies_to_validated_photo_once(tmp_path):
+    store = InvoiceStore(tmp_path)
+    doc = store.ingest(b"photo", ".jpg", source(), {"message_id": "12"})
+    with pytest.raises(ValueError):
+        store.ask(doc, "-100123", "99", "Какой клиент?")
+    first = store.ask(doc, "-100123", "12", "Какой клиент?")
+    assert store.ask(doc, "-100123", "12", "Какой клиент?") == first
+    adapter = SimpleNamespace(config=SimpleNamespace(extra={"invoice_intake_chats": ["-100123"]}),
+                              send=AsyncMock(return_value=SimpleNamespace(success=False)))
+    await deliver_ready(adapter, store)
+    assert len(store.pending_questions()) == 1
+    adapter.send.return_value.success = True
+    await deliver_ready(adapter, store)
+    adapter.send.assert_called_with("-100123", "Какой клиент?", reply_to="12")
+    await deliver_ready(adapter, store)
+    assert adapter.send.await_count == 2
+    assert not store.pending_questions()
+
+
 def test_durable_queue_dedup_revisions_and_recovery(tmp_path):
     store = InvoiceStore(tmp_path)
     metadata = {"message_id": "10", "author_id": "7", "media_group_id": "a"}

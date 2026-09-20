@@ -36,6 +36,12 @@ class InvoiceStore:
                     delivery_status TEXT NOT NULL DEFAULT 'not_recorded',
                     PRIMARY KEY(chat_id, message_id));
                 CREATE TABLE IF NOT EXISTS controls (key TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE IF NOT EXISTS recognition_attempts (
+                    document_id TEXT NOT NULL, provider TEXT NOT NULL, outcome TEXT NOT NULL,
+                    detail TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS questions (
+                    id TEXT PRIMARY KEY, document_id TEXT NOT NULL, chat_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL, text TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
             """)
         os.chmod(self.root / "queue.sqlite", 0o600)
 
@@ -127,6 +133,42 @@ class InvoiceStore:
             db.execute("UPDATE documents SET status=?,error=?,available=? WHERE id=?",
                        ("pending" if retry else "error", reason, time.time() + 30, document))
 
+    def record_attempt(self, document: str, provider: str, outcome: str, detail: str):
+        with self.db() as db:
+            db.execute("INSERT INTO recognition_attempts VALUES (?,?,?,?,?)",
+                       (document, provider, outcome, detail, time.time()))
+
+    def ask(self, document: str, chat: str, message: str, text: str):
+        if not text.strip() or len(text) > 3000:
+            raise ValueError("question must contain 1–3000 characters")
+        identifier = hashlib.sha256(json.dumps([document, chat, message, text]).encode()).hexdigest()
+        with self.db() as db:
+            if not db.execute("SELECT 1 FROM messages WHERE document_id=? AND chat_id=? AND message_id=?",
+                              (document, chat, message)).fetchone():
+                raise ValueError("question source must be an original message for this document")
+            db.execute("INSERT OR IGNORE INTO questions(id,document_id,chat_id,message_id,text) VALUES (?,?,?,?,?)",
+                       (identifier, document, chat, message, text))
+        return identifier
+
+    def pending_questions(self):
+        with self.db() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM questions WHERE sent=0 ORDER BY rowid")]
+
+    def question_sent(self, identifier):
+        with self.db() as db:
+            db.execute("UPDATE questions SET sent=1 WHERE id=?", (identifier,))
+
+    def retry_errors(self, album: str):
+        with self.db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            ids = [row[0] for row in db.execute("""SELECT DISTINCT d.id FROM documents d
+                JOIN messages m ON m.document_id=d.id WHERE m.album_id=? AND d.status='error'""", (album,))]
+            for document in ids:
+                db.execute("UPDATE documents SET status='pending',attempts=0,available=0 WHERE id=?", (document,))
+                db.execute("""UPDATE albums SET version=version+1,changed=? WHERE id IN
+                    (SELECT album_id FROM messages WHERE document_id=?)""", (time.time(), document))
+            return len(ids)
+
     def review(self, document: str, candidates: list[str]):
         if not 1 <= len(candidates) <= 5 or any(len(x) > 500 for x in candidates):
             raise ValueError("provide 1–5 short candidates")
@@ -144,6 +186,8 @@ class InvoiceStore:
             if row is None:
                 raise ValueError("unknown document")
             result = dict(row)
+            result["recognition_attempts"] = [dict(r) for r in db.execute(
+                "SELECT provider,outcome,detail,created FROM recognition_attempts WHERE document_id=? ORDER BY created", (document,))]
             result["revisions"] = [dict(r) for r in db.execute(
                 "SELECT revision,card,warnings,created FROM revisions WHERE document_id=? ORDER BY revision", (document,))]
             for revision in result["revisions"]:

@@ -49,15 +49,17 @@ def parse_batch_response(raw: str, jobs: list[dict]) -> dict[str, InvoiceExtract
         raise ValueError("expected documents envelope")
     expected = {job["id"] for job in jobs}
     cards = {}
+    if not isinstance(payload["documents"], list):
+        raise ValueError("documents must be an array")
     for item in payload["documents"]:
         if not isinstance(item, dict) or set(item) != {"document_id", "card"}:
             raise ValueError("invalid document envelope")
         identifier = item["document_id"]
-        if identifier not in expected or identifier in cards:
+        if not isinstance(identifier, str) or identifier not in expected or identifier in cards:
             raise ValueError("unknown or duplicate document ID")
         cards[identifier] = InvoiceExtractionV1.model_validate(item["card"])
     if set(cards) != expected:
-        raise ValueError("missing document IDs")
+        raise ValueError("missing document IDs: " + ", ".join(sorted(expected - set(cards))))
     return cards
 
 
@@ -66,6 +68,29 @@ def recognize(store: InvoiceStore, job: dict) -> InvoiceExtractionV1:
 
 
 def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceExtractionV1]:
+    try:
+        return recognize_gemini_batch(store, jobs)
+    except RecognitionError as exc:
+        for job in jobs:
+            store.record_attempt(job["id"], "gemini", "failed", str(exc))
+        # Transient failures retain the existing bounded queue retries before fallback.
+        if exc.transient and any(job["attempts"] < 2 for job in jobs):
+            raise
+        from gateway.invoice_grok import recognize_grok_batch
+        return recognize_grok_batch(store, jobs)
+
+
+def validation_feedback(exc: Exception) -> str:
+    # ValidationError text includes input values; transmit only field paths/types.
+    if hasattr(exc, "errors"):
+        issues = [{"field": list(e["loc"]), "type": e["type"]} for e in exc.errors()]
+        return json.dumps(issues)
+    if isinstance(exc, json.JSONDecodeError):
+        return f"Invalid JSON at line {exc.lineno}, column {exc.colno}."
+    return str(exc)[:500]
+
+
+def recognize_gemini_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceExtractionV1]:
     workspace = store.root.parent / "workspaces" / "jam-vision"
     workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.TemporaryDirectory(prefix="invoice-", dir=workspace) as temporary:
@@ -88,11 +113,15 @@ def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceE
             "Extract ONLY client, date and grand total; include concrete visual evidence for uncertainty. "
             + json.dumps(InvoiceExtractionV1.model_json_schema(), ensure_ascii=False)
         )
-        for correction in range(2):
+        conversation_id = None
+        for correction in range(4):
             try:
+                command = ["agy", "--model", "gemini-3.8-flash-high", "--mode", "plan", "--output-format", "json",
+                           "--print-timeout", "180s", "--add-dir", temporary, "--print", prompt]
+                if conversation_id:
+                    command += ["--conversation", conversation_id]
                 process = subprocess.Popen(
-                    ["agy", "--model", "gemini-3.8-flash-high", "--mode", "plan", "--output-format", "json",
-                     "--print-timeout", "180s", "--add-dir", temporary, "--print", prompt],
+                    command,
                     cwd=temporary, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                     start_new_session=True,
                 )
@@ -111,11 +140,25 @@ def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceE
                 raise RecognitionError("Gemini authorization required" if auth else "Gemini invocation failed",
                                        transient=transient, auth=auth)
             try:
-                return parse_batch_response(stdout, jobs)
-            except (ValueError, TypeError):
-                if correction:
+                transport = json.loads(stdout)
+                if isinstance(transport, dict) and isinstance(transport.get("conversation_id"), str):
+                    conversation_id = transport["conversation_id"]
+                cards = parse_batch_response(stdout, jobs)
+                for job in jobs:
+                    store.record_attempt(job["id"], "gemini", "success", f"corrections={correction}")
+                return cards
+            except (ValueError, TypeError) as exc:
+                for job in jobs:
+                    store.record_attempt(job["id"], "gemini", "invalid_format", validation_feedback(exc))
+                if correction == 3:
                     raise RecognitionError("Gemini returned invalid invoice batch") from None
-                prompt += " Invalid response. Return the documents envelope, exact IDs and all card fields for EVERY file."
+                if not conversation_id:
+                    raise RecognitionError("Gemini invalid response without conversation ID") from None
+                prompt = ("Correct your previous report in THIS conversation. Validation errors: "
+                          + validation_feedback(exc) + ". Return ONLY the complete documents JSON envelope, "
+                          "with exactly these IDs: " + json.dumps([j["id"] for j in jobs])
+                          + ". Keep each image's values separate. Card schema: "
+                          + json.dumps(InvoiceExtractionV1.model_json_schema()))
     raise AssertionError("unreachable")
 
 
@@ -179,8 +222,11 @@ def run_pool(store, workers, batch_size):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["run", "list", "get", "review", "resume", "seal", "import"])
+    parser.add_argument("action", choices=["run", "list", "get", "review", "resume", "seal", "import", "retry-errors", "ask"])
     parser.add_argument("--id")
+    parser.add_argument("--chat-id")
+    parser.add_argument("--message-id")
+    parser.add_argument("--question")
     parser.add_argument("--candidates", nargs="+", default=[])
     parser.add_argument("--workers", type=int, choices=range(1, 6), default=5)
     parser.add_argument("--batch-size", type=int, choices=range(1, 6), default=5)
@@ -197,6 +243,14 @@ def main():
         store.control("paused", "")
     elif args.action == "seal":
         store.seal(args.id)
+    elif args.action == "retry-errors":
+        if not args.id:
+            parser.error("retry-errors requires an album --id")
+        print(json.dumps({"requeued": store.retry_errors(args.id)}))
+    elif args.action == "ask":
+        if not all((args.id, args.chat_id, args.message_id, args.question)):
+            parser.error("ask requires --id, --chat-id, --message-id and --question")
+        print(json.dumps({"queued_question": store.ask(args.id, args.chat_id, args.message_id, args.question)}))
     elif args.action == "import":
         import base64
         import sys
