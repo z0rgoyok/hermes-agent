@@ -6,6 +6,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class RecognitionError(Exception):
+    def __init__(self, reason, *, transient=False, auth=False):
+        super().__init__(reason)
+        self.transient, self.auth = transient, auth
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

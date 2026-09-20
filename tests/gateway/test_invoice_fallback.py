@@ -9,6 +9,12 @@ from gateway.invoice_store import InvoiceStore
 from gateway import invoice_worker as worker
 
 
+def test_worker_and_grok_share_one_recognition_error_type():
+    from gateway.invoice_schema import RecognitionError
+    from gateway.invoice_grok import RecognitionError as GrokRecognitionError
+    assert worker.RecognitionError is RecognitionError is GrokRecognitionError
+
+
 def setup_job(tmp_path):
     store = InvoiceStore(tmp_path)
     identifier = store.ingest(b"image", ".jpg", {"chat_id": "1"}, {"message_id": "2"}, batch="batch")

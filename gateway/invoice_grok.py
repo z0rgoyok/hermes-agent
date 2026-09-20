@@ -3,14 +3,14 @@ import base64
 import json
 import mimetypes
 
-from gateway.invoice_schema import InvoiceExtractionV1
+from gateway.invoice_schema import InvoiceExtractionV1, RecognitionError
 
 
 def recognize_grok_batch(store, jobs):
     from openai import OpenAI, APIError
     from hermes_cli.auth_xai import resolve_xai_oauth_runtime_credentials
     from hermes_cli.auth import AuthError
-    from gateway.invoice_worker import RecognitionError, parse_batch_response, validation_feedback
+    from gateway.invoice_worker import parse_batch_response, validation_feedback
     import yaml
 
     try:

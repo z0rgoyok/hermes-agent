@@ -13,17 +13,11 @@ import tempfile
 import time
 from threading import Event
 
-from gateway.invoice_schema import InvoiceExtractionV1, arithmetic_warnings
+from gateway.invoice_schema import InvoiceExtractionV1, RecognitionError, arithmetic_warnings
 from gateway.invoice_store import InvoiceStore
 from hermes_constants import get_hermes_home
 
 log = logging.getLogger(__name__)
-
-
-class RecognitionError(Exception):
-    def __init__(self, reason, *, transient=False, auth=False):
-        super().__init__(reason)
-        self.transient, self.auth = transient, auth
 
 
 def response_payload(raw: str):
