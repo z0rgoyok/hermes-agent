@@ -28,6 +28,7 @@ def _restore_telegram_env():
 def _make_adapter(
     require_mention=None,
     free_response_chats=None,
+    semantic_participant_chats=None,
     free_response_topics=None,
     mention_patterns=None,
     exclusive_bot_mentions=None,
@@ -49,6 +50,8 @@ def _make_adapter(
         extra["require_mention"] = require_mention
     if free_response_chats is not None:
         extra["free_response_chats"] = free_response_chats
+    if semantic_participant_chats is not None:
+        extra["semantic_participant_chats"] = semantic_participant_chats
     if free_response_topics is not None:
         extra["free_response_topics"] = free_response_topics
     if mention_patterns is not None:
@@ -428,6 +431,59 @@ def test_free_response_topic_messages_are_dispatched_not_observed():
     other_topic = _group_message("side chatter", chat_id=-200, thread_id=32)
     assert adapter._should_process_message(other_topic) is False
     assert adapter._should_observe_unmentioned_group_message(other_topic) is True
+
+
+def test_semantic_participant_chat_dispatches_plain_human_message_with_silence_policy():
+    adapter = _make_adapter(
+        require_mention=True,
+        allowed_chats=["-200"],
+        group_allowed_chats=["-200"],
+        observe_unmentioned_group_messages=True,
+        semantic_participant_chats=["-200"],
+        bots_require_mention=True,
+    )
+    message = _group_message("что думаете?", chat_id=-200)
+
+    assert adapter._should_process_message(message) is True
+    assert adapter._should_observe_unmentioned_group_message(message) is False
+
+    event = adapter._build_message_event(message, MessageType.TEXT, update_id=1004)
+    attributed = adapter._apply_telegram_group_observe_attribution(event)
+
+    assert attributed.source.user_id is None
+    assert attributed.text.startswith("[telegram-participant explicitly_addressed=false]\n")
+    assert "output exactly NO_REPLY" in attributed.channel_prompt
+    assert "Decide whether to stay silent before calling tools" in attributed.channel_prompt
+
+
+def test_semantic_participant_marks_mention_as_explicitly_addressed():
+    adapter = _make_adapter(
+        require_mention=True,
+        allowed_chats=["-200"],
+        group_allowed_chats=["-200"],
+        observe_unmentioned_group_messages=True,
+        semantic_participant_chats=["-200"],
+    )
+    text = "@hermes_bot помоги"
+    message = _group_message(text, chat_id=-200, entities=[_mention_entity(text)])
+    event = adapter._build_message_event(message, MessageType.TEXT, update_id=1005)
+
+    attributed = adapter._apply_telegram_group_observe_attribution(event)
+
+    assert attributed.text.startswith("[telegram-participant explicitly_addressed=true]\n")
+
+
+def test_semantic_participant_chat_does_not_wake_for_unmentioned_other_bot():
+    adapter = _make_adapter(
+        require_mention=True,
+        allowed_chats=["-200"],
+        semantic_participant_chats=["-200"],
+        bots_require_mention=True,
+    )
+    message = _group_message("background status", chat_id=-200)
+    message.from_user.is_bot = True
+
+    assert adapter._should_process_message(message) is False
 
 
 def test_guest_mode_allows_only_direct_mentions_outside_allowed_chats():

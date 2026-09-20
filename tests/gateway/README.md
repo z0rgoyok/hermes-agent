@@ -777,7 +777,7 @@
 | [test_telegram_final_delivery.py](./test_telegram_final_delivery.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | b5c85e73c3a00d2f8e6547706e340d5a1e09812a |
 | [test_telegram_format.py](./test_telegram_format.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 2195179b28f202bc0d5f2c7a91c543fff7e3024b |
 | [test_telegram_forum_commands.py](./test_telegram_forum_commands.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | ee2ec61e538d9879ca72a6f10838925efa59cdfc |
-| [test_telegram_group_gating.py](./test_telegram_group_gating.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 20daa20fe5b7beec7cf36767e0e1f9ece61b19c3 |
+| [test_telegram_group_gating.py](./test_telegram_group_gating.py) | Проверяет Telegram-gating групп: упоминания, reply, общий наблюдаемый контекст, смысловой режим участника и защиту от циклов между ботами. | 0bec9f2190ea5bfc514420a143495b4fe2a048c2 |
 | [test_telegram_image_precompress.py](./test_telegram_image_precompress.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 3ed1faf057e1881b632623c5e0b8ead05e99bf2b |
 | [test_telegram_inbound_warning_owner.py](./test_telegram_inbound_warning_owner.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 49398da659db1e850d02e86e953a5d5811921adf |
 | [test_telegram_ingress_delivery_gap.py](./test_telegram_ingress_delivery_gap.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | da1411601cce2206f50ee902f0b79cab7646c381 |
