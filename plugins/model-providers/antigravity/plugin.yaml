@@ -1,0 +1,5 @@
+name: antigravity-provider
+kind: model-provider
+version: 1.0.0
+description: Gemini through an authenticated Antigravity subscription
+author: Hermes Agent
