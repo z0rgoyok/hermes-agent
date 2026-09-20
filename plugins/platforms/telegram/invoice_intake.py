@@ -81,6 +81,15 @@ async def delivery_loop(adapter):
     store = InvoiceStore(get_hermes_home())
     while True:
         try:
+            paused = store.control("paused")
+            if paused and store.control("pause_notice") != paused:
+                for chat in adapter.config.extra.get("invoice_intake_chats", []):
+                    result = await adapter.send(str(chat), "Распознавание фото приостановлено: требуется авторизация Gemini. Фото сохранены в очереди.")
+                    if not result.success:
+                        raise RuntimeError("pause notice delivery failed")
+                store.control("pause_notice", paused)
+            elif not paused and store.control("pause_notice"):
+                store.control("pause_notice", "")
             await deliver_ready(adapter, store)
         except Exception as exc:
             log.error("Invoice delivery deferred: %s", type(exc).__name__)
