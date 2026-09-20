@@ -353,7 +353,7 @@
 | [test_internal_notification_marker.py](./test_internal_notification_marker.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | bcec76bf9c6dffa50b3b5ef92d9b194c805ff919 |
 | [test_interrupt_keeps_parked_internal_wake.py](./test_interrupt_keeps_parked_internal_wake.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | deec07cd1fa0662f4560b300c79715d3617e192a |
 | [test_interrupt_key_match.py](./test_interrupt_key_match.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 79c39ee7bf955bd98967d3d3eb75f81028f4e2e8 |
-| [test_invoice_fallback.py](./test_invoice_fallback.py) | Проверяет единый тип ошибки, Gemini conversation ID, три исправления обоих провайдеров, fallback и обязательный Grok-просмотр спорной карточки. | 614da732e690aacbad0fe70529f380e503e85962 |
+| [test_invoice_fallback.py](./test_invoice_fallback.py) | Проверяет единый тип ошибки, Gemini conversation ID, три исправления обоих провайдеров, fallback и отдельные параллельные Grok-просмотры спорных карточек. | e0ec23b4d388dd9ac5275df44a46d74891dfd743 |
 | [test_invoice_intake.py](./test_invoice_intake.py) | Проверяет дедупликацию OCR, отдельные результаты провайдеров, пакетный повтор вопросов, доставку фото без reply и текстовую карточку ответа. | 83d18d006839ed9f0c90b73d708c62792f756846 |
 | [test_irc_adapter.py](./test_irc_adapter.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 7db8e115d4a16914d140e0f702dfc49ca54db0d8 |
 | [test_kanban_auto_decompose_live.py](./test_kanban_auto_decompose_live.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 955f91f1270a2be5700417e461ed33fd27c0145f |

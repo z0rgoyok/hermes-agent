@@ -1,9 +1,33 @@
 """Isolated Grok vision fallback; no agent tools or business mutations."""
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import mimetypes
 
 from gateway.invoice_schema import InvoiceExtractionV1, RecognitionError
+
+
+def recognize_grok_independent(store, jobs):
+    """Read each disputed document independently without one slow image blocking its peers."""
+    if not jobs:
+        return {}
+    cards = {}
+    failures = []
+    with ThreadPoolExecutor(max_workers=min(5, len(jobs)), thread_name_prefix="grok-invoice") as pool:
+        futures = {pool.submit(recognize_grok_batch, store, [job]): job for job in jobs}
+        for future in as_completed(futures):
+            job = futures[future]
+            try:
+                cards.update(future.result())
+            except RecognitionError as exc:
+                failures.append((job["id"], exc))
+    if failures:
+        raise RecognitionError(
+            f"Grok second opinion failed for {len(failures)} of {len(jobs)} documents",
+            transient=any(exc.transient for _, exc in failures),
+            auth=any(exc.auth for _, exc in failures),
+        )
+    return cards
 
 
 def recognize_grok_batch(store, jobs):

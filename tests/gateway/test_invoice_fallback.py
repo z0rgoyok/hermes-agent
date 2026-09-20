@@ -93,7 +93,7 @@ def test_ambiguous_gemini_card_gets_independent_grok_result(tmp_path, monkeypatc
     monkeypatch.setattr(worker, "recognize_gemini_batch", Mock(return_value={job["id"]: gemini}))
     from gateway import invoice_grok
     second = Mock(return_value={job["id"]: grok})
-    monkeypatch.setattr(invoice_grok, "recognize_grok_batch", second)
+    monkeypatch.setattr(invoice_grok, "recognize_grok_independent", second)
     cards = worker.recognize_batch(store, [job])
     assert cards[job["id"]].client == "Алиса"
     second.assert_called_once_with(store, [job])
@@ -107,8 +107,28 @@ def test_failed_second_opinion_keeps_gemini_card_available(tmp_path, monkeypatch
                         "explanation": "неоднозначная рукописная буква"}], visual_evidence="рукопись"))
     monkeypatch.setattr(worker, "recognize_gemini_batch", Mock(return_value={job["id"]: ambiguous}))
     from gateway import invoice_grok
-    monkeypatch.setattr(invoice_grok, "recognize_grok_batch",
+    monkeypatch.setattr(invoice_grok, "recognize_grok_independent",
                         Mock(side_effect=worker.RecognitionError("Grok authorization required", auth=True)))
     cards = worker.recognize_batch(store, [job])
     assert cards[job["id"]].client is None
     assert store.control("paused") == "Grok authorization required"
+
+
+def test_second_opinions_are_one_document_per_parallel_request(tmp_path, monkeypatch):
+    from gateway import invoice_grok
+    store, first, valid = setup_job(tmp_path)
+    second_id = store.ingest(b"other", ".jpg", {"chat_id": "1"}, {"message_id": "3"}, batch="batch")
+    second = store.claim()
+    seen = []
+
+    def recognize(_store, jobs):
+        assert len(jobs) == 1
+        seen.append(jobs[0]["id"])
+        payload = json.loads(valid)
+        payload["documents"][0]["document_id"] = jobs[0]["id"]
+        return worker.parse_batch_response(json.dumps(payload), jobs)
+
+    monkeypatch.setattr(invoice_grok, "recognize_grok_batch", recognize)
+    cards = invoice_grok.recognize_grok_independent(store, [first, second])
+    assert set(seen) == {first["id"], second_id}
+    assert set(cards) == set(seen)

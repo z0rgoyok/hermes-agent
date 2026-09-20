@@ -80,9 +80,9 @@ def recognize_batch(store: InvoiceStore, jobs: list[dict]) -> dict[str, InvoiceE
         return recognize_grok_batch(store, jobs)
     second_opinion = [job for job in jobs if job.get("candidates") or needs_second_opinion(cards[job["id"]])]
     if second_opinion:
-        from gateway.invoice_grok import recognize_grok_batch
+        from gateway.invoice_grok import recognize_grok_independent
         try:
-            recognize_grok_batch(store, second_opinion)
+            recognize_grok_independent(store, second_opinion)
         except RecognitionError as exc:
             # Gemini cards remain useful and must not hold up unrelated documents.
             # The failed second opinion is durable in recognition_attempts and the
