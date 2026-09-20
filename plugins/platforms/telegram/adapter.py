@@ -3126,6 +3126,9 @@ class TelegramAdapter(BasePlatformAdapter):
             # gateway wraps in a connect timeout — means one slow call blows the whole connect and the
             # adapter never comes up, even though polling/webhook is already live (#46298).
             self._start_post_connect_housekeeping()
+            if self.config.extra.get("invoice_intake_chats"):
+                from plugins.platforms.telegram.invoice_intake import delivery_loop
+                self._restart_task_attr("_invoice_delivery_task", delivery_loop(self))
             return True
         except Exception as e:
             self._release_platform_lock()
@@ -3256,6 +3259,10 @@ class TelegramAdapter(BasePlatformAdapter):
 
     async def disconnect(self) -> None:
         """Stop polling/webhook, cancel pending delayed deliveries, and disconnect."""
+        invoice_task = getattr(self, "_invoice_delivery_task", None)
+        if invoice_task:
+            invoice_task.cancel()
+            await asyncio.gather(invoice_task, return_exceptions=True)
         # Mark disconnected first so the drop guard short-circuits any flush that wins the race.
         self._mark_disconnected()
         self._polling_teardown_started = True
@@ -6505,6 +6512,10 @@ class TelegramAdapter(BasePlatformAdapter):
         if not self._is_user_authorized_from_message(msg):
             self._log_blocked_user(msg, level=logging.INFO, what="media from unauthorized user")
             return
+        if self.config.extra.get("invoice_intake_chats"):
+            from plugins.platforms.telegram.invoice_intake import intercept
+            if await intercept(self, msg, update.update_id):
+                return
         if not self._should_process_message(msg):
             if self._should_observe_unmentioned_group_message(msg):
                 _event = self._build_message_event(msg, self._media_message_type(msg), update_id=update.update_id)
