@@ -40,7 +40,7 @@
 | [hosted_rooms_legacy_import.py](./hosted_rooms_legacy_import.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 3aae609e073109588e413b025b6f97a802578b89 |
 | [invoice_grok.py](./invoice_grok.py) | Резервное OCR через существующий xAI OAuth: изображения и три исправления в одной истории; выдаёт валидированные карточки без инструментов записи. | fe7d8e68007efe0557f911247742c26be35d776b |
 | [invoice_schema.py](./invoice_schema.py) | Схема карточки: клиент, дата, итог; проверка типов и неясностей результата Gemini. | eff0169149e5e22e8da3e5233270fb751b7a5171 |
-| [invoice_store.py](./invoice_store.py) | SQLite-очередь, оригиналы, журнал попыток провайдеров и ревизии; повторяет только ошибки выбранного альбома, сохраняя готовые карточки. | 251af56d9226740f0669bf1cde4b270f458f847e |
+| [invoice_store.py](./invoice_store.py) | SQLite-очередь, ревизии и попытки OCR; сохраняет вопросы, receipt отправленных фото и привязку ответов к карточкам. | 1fc33546a26ff66907e62bd35d2893c0255bdc56 |
 | [invoice_worker.py](./invoice_worker.py) | Пять потоков по пять фото: Gemini с тремя исправлениями в той же сессии, fallback Grok, строгая проверка ID и CLI очереди. | 596ccd17e2e8ea550ec8c8a2d5580ace97667ed0 |
 | [kanban_watchers.py](./kanban_watchers.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | abe89a0d96c4221d04669e3df4388d80b97881ef |
 | [kanban_watchers_common.py](./kanban_watchers_common.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | c690c9f8befdd5ce7869cb8a3d5d9a610fb62d83 |

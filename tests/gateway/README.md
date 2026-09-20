@@ -354,7 +354,7 @@
 | [test_interrupt_keeps_parked_internal_wake.py](./test_interrupt_keeps_parked_internal_wake.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | deec07cd1fa0662f4560b300c79715d3617e192a |
 | [test_interrupt_key_match.py](./test_interrupt_key_match.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 79c39ee7bf955bd98967d3d3eb75f81028f4e2e8 |
 | [test_invoice_fallback.py](./test_invoice_fallback.py) | Проверяет сохранение Gemini conversation ID, три исправления у обоих провайдеров, переход к Grok и сохранность готовых карточек при повторе ошибок. | b5a65dfb6524577181235159b51acecf9cda3814 |
-| [test_invoice_intake.py](./test_invoice_intake.py) | Проверяет очередь после перезапуска, дедупликацию, ревизии, ошибки Gemini и текстовую доставку через Telegram adapter. | d2bb852c9b322faf49a336209662962b4ec8a35a |
+| [test_invoice_intake.py](./test_invoice_intake.py) | Проверяет дедупликацию OCR, доставку фото с вопросом без reply и текстовую карточку при ответе на новое сообщение. | 4d3144d6b1e0014858f4fc0a0925f5d0cca51f9e |
 | [test_irc_adapter.py](./test_irc_adapter.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 7db8e115d4a16914d140e0f702dfc49ca54db0d8 |
 | [test_kanban_auto_decompose_live.py](./test_kanban_auto_decompose_live.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 955f91f1270a2be5700417e461ed33fd27c0145f |
 | [test_kanban_auto_decompose_secret_scope.py](./test_kanban_auto_decompose_secret_scope.py) | Требует ручного описания назначения, существенных входов, выходов и связей. | 86f725e4a4ee28fd11b793759e30a0208f209563 |

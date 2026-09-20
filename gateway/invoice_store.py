@@ -42,6 +42,9 @@ class InvoiceStore:
                 CREATE TABLE IF NOT EXISTS questions (
                     id TEXT PRIMARY KEY, document_id TEXT NOT NULL, chat_id TEXT NOT NULL,
                     message_id TEXT NOT NULL, text TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS question_deliveries (
+                    question_id TEXT NOT NULL, chat_id TEXT NOT NULL, message_id TEXT NOT NULL,
+                    PRIMARY KEY(chat_id,message_id));
             """)
         os.chmod(self.root / "queue.sqlite", 0o600)
 
@@ -139,8 +142,8 @@ class InvoiceStore:
                        (document, provider, outcome, detail, time.time()))
 
     def ask(self, document: str, chat: str, message: str, text: str):
-        if not text.strip() or len(text) > 3000:
-            raise ValueError("question must contain 1–3000 characters")
+        if not text.strip() or len(text.encode("utf-16-le")) // 2 > 900:
+            raise ValueError("question must contain 1–900 Telegram caption characters")
         identifier = hashlib.sha256(json.dumps([document, chat, message, text]).encode()).hexdigest()
         with self.db() as db:
             if not db.execute("SELECT 1 FROM messages WHERE document_id=? AND chat_id=? AND message_id=?",
@@ -152,11 +155,21 @@ class InvoiceStore:
 
     def pending_questions(self):
         with self.db() as db:
-            return [dict(r) for r in db.execute("SELECT * FROM questions WHERE sent=0 ORDER BY rowid")]
+            return [dict(r) for r in db.execute("""SELECT q.*,d.extension FROM questions q
+                JOIN documents d ON d.id=q.document_id WHERE q.sent=0 ORDER BY q.rowid""")]
 
-    def question_sent(self, identifier):
+    def question_sent(self, identifier, message_id):
         with self.db() as db:
             db.execute("UPDATE questions SET sent=1 WHERE id=?", (identifier,))
+            db.execute("""INSERT OR IGNORE INTO question_deliveries SELECT id,chat_id,?
+                FROM questions WHERE id=?""", (str(message_id), identifier))
+
+    def reply_card(self, chat, message):
+        with self.db() as db:
+            row = db.execute("""SELECT document_id FROM messages WHERE chat_id=? AND message_id=?
+                UNION SELECT q.document_id FROM question_deliveries x JOIN questions q ON q.id=x.question_id
+                WHERE x.chat_id=? AND x.message_id=? LIMIT 1""", (str(chat), str(message), str(chat), str(message))).fetchone()
+        return self.card(row[0]) if row else None
 
     def retry_errors(self, album: str):
         with self.db() as db:

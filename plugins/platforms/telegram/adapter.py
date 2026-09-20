@@ -6002,6 +6002,10 @@ class TelegramAdapter(BasePlatformAdapter):
 
     async def _cache_replied_media(self, msg: Any, event: MessageEvent) -> None:
         """Cache media from the message this turn replies to, if any."""
+        if self.config.extra.get("invoice_intake_chats"):
+            from plugins.platforms.telegram.invoice_intake import attach_reply_card
+            if attach_reply_card(self, msg, event):
+                return
         reply_msg = getattr(msg, "reply_to_message", None)
         if reply_msg is None:
             return

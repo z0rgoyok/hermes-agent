@@ -46,7 +46,8 @@ def source():
 
 
 @pytest.mark.asyncio
-async def test_document_question_replies_to_validated_photo_once(tmp_path):
+async def test_document_question_sends_photo_without_reply_and_answers_use_cards(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     store = InvoiceStore(tmp_path)
     doc = store.ingest(b"photo", ".jpg", source(), {"message_id": "12"})
     with pytest.raises(ValueError):
@@ -54,15 +55,21 @@ async def test_document_question_replies_to_validated_photo_once(tmp_path):
     first = store.ask(doc, "-100123", "12", "Какой клиент?")
     assert store.ask(doc, "-100123", "12", "Какой клиент?") == first
     adapter = SimpleNamespace(config=SimpleNamespace(extra={"invoice_intake_chats": ["-100123"]}),
-                              send=AsyncMock(return_value=SimpleNamespace(success=False)))
+                              send_image_file=AsyncMock(return_value=SimpleNamespace(success=False,message_id="80")))
     await deliver_ready(adapter, store)
     assert len(store.pending_questions()) == 1
-    adapter.send.return_value.success = True
+    adapter.send_image_file.return_value.success = True
     await deliver_ready(adapter, store)
-    adapter.send.assert_called_with("-100123", "Какой клиент?", reply_to="12")
+    adapter.send_image_file.assert_called_with("-100123", str(store.originals / (doc + ".jpg")), caption="Какой клиент?")
     await deliver_ready(adapter, store)
-    assert adapter.send.await_count == 2
+    assert adapter.send_image_file.await_count == 2
     assert not store.pending_questions()
+    from plugins.platforms.telegram.adapter import TelegramAdapter
+    event = SimpleNamespace(text="Это Азиза", media_urls=[], media_types=[])
+    message = SimpleNamespace(chat_id="-100123", reply_to_message=SimpleNamespace(message_id=80))
+    await TelegramAdapter._cache_replied_media(adapter, message, event)
+    assert doc in event.text
+    assert not event.media_urls and not event.media_types
 
 
 def test_durable_queue_dedup_revisions_and_recovery(tmp_path):
