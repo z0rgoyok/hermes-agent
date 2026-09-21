@@ -64,3 +64,29 @@ def test_external_process_plugin_authenticated_flag_tracks_binary_and_catalog_us
     monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
     assert authenticated() is False
     assert models.provider_model_ids("acme-acp") == ["acme-acp"]
+
+
+def test_external_process_plugin_fallback_is_visible_on_cold_non_blocking_picker(
+        monkeypatch, tmp_path):
+    """A first gateway /model open must use the profile fallback before its async cache warm finishes."""
+    from providers.base import ProviderProfile
+    from hermes_cli import models
+    from hermes_cli.model_switch_providers import list_picker_providers
+    from hermes_cli.models_catalog_static import ProviderEntry
+
+    exe = tmp_path / "acme-acp"
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    profile = ProviderProfile(
+        name="acme-cold-acp", auth_type="external_process", base_url="acp://acme-cold",
+        process_command="acme-acp", fallback_models=("acme-cold-model",))
+    _register(monkeypatch, profile)
+    monkeypatch.setattr(
+        models, "CANONICAL_PROVIDERS",
+        [*models.CANONICAL_PROVIDERS, ProviderEntry("acme-cold-acp", "Acme Cold ACP", "test")])
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+
+    rows = list_picker_providers(non_blocking_catalogs=True, probe_custom_providers=False)
+    row = next(item for item in rows if item["slug"] == "acme-cold-acp")
+    assert row["models"] == ["acme-cold-model"]

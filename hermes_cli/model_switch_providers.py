@@ -414,6 +414,15 @@ def _live_or_curated_ids(slug: str, curated: dict, *fallback_keys: str, merge_mo
     model_ids = cached_provider_model_ids(slug, non_blocking=non_blocking)
     if not model_ids:
         model_ids = _first_curated(curated, fallback_keys or (slug,))
+        if not model_ids:
+            # Plugin profiles are admitted to CANONICAL_PROVIDERS at discovery time, while the
+            # static curated table was built before their slugs existed.  A cold non-blocking
+            # picker therefore has no disk row yet; use the profile's local fallback immediately
+            # while cached_provider_model_ids warms the live catalog in the background.
+            from providers import get_provider_profile
+            profile = get_provider_profile(slug)
+            if profile is not None:
+                model_ids = list(profile.fallback_models or ())
         if merge_models_dev and slug in _MODELS_DEV_PREFERRED:
             model_ids = _merge_with_models_dev(slug, model_ids)
     return model_ids
