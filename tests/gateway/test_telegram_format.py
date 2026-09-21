@@ -231,6 +231,28 @@ class TestItalicNewlineBug:
         # Should NOT contain _ (italic markers) wrapping list items
         assert "_" not in result or "Item" not in result.split("_")[1] if "_" in result else True
 
+    def test_commonmark_bullets_and_rule_render_as_telegram_text(self, adapter):
+        """Gemini-style ``*`` lists and horizontal rules must not leak Markdown source markers."""
+        text = (
+            "---\n\n"
+            "## 2. Общее саммари проекта\n\n"
+            "### Бланк (талон 58 мм)\n"
+            "* **Формат:** Единый талон.\n"
+            "* **Содержание:** Шапка и перечень позиций.\n"
+            "  + Вложенный пункт.\n"
+            "- Обычный пункт."
+        )
+
+        result = adapter.format_message(text)
+
+        assert result.startswith("────────\n\n*2\\. Общее саммари проекта*")
+        assert "• *Формат:* Единый талон\\." in result
+        assert "• *Содержание:* Шапка и перечень позиций\\." in result
+        assert "  • Вложенный пункт\\." in result
+        assert "• Обычный пункт\\." in result
+        assert "\\* Формат" not in result
+        assert "\\-\\-\\-" not in result
+
 
 # =========================================================================
 # format_message - strikethrough

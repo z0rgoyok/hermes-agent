@@ -261,11 +261,20 @@ def check_telegram_requirements() -> bool:
 
 # Every char MarkdownV2 requires backslash-escaped outside code spans/fences.
 _MDV2_ESCAPE_RE = re.compile(r'([_*\[\]()~`>#\+\-=|{}.!\\])')
+_MARKDOWN_HORIZONTAL_RULE_RE = re.compile(
+    r'^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$', re.MULTILINE)
+_MARKDOWN_UNORDERED_ITEM_RE = re.compile(r'^([ \t]*)[-+*][ \t]+(?=\S)', re.MULTILINE)
 
 
 def _escape_mdv2(text: str) -> str:
     """Escape Telegram MarkdownV2 special characters with a preceding backslash."""
     return _MDV2_ESCAPE_RE.sub(r'\\\1', text)
+
+
+def _normalize_markdown_blocks_for_telegram(text: str) -> str:
+    """Render CommonMark blocks that MarkdownV2 cannot represent as stable Unicode text."""
+    text = _MARKDOWN_HORIZONTAL_RULE_RE.sub('────────', text)
+    return _MARKDOWN_UNORDERED_ITEM_RE.sub(r'\1• ', text)
 
 
 def _strip_mdv2(text: str) -> str:
@@ -5413,6 +5422,9 @@ class TelegramAdapter(BasePlatformAdapter):
             return _ph(raw[:open_end] + body + '```')
 
         text = re.sub(r'(```(?:[^\n]*\n)?[\s\S]*?```)', _protect_fenced, text)
+        # Telegram MarkdownV2 has no unordered-list or horizontal-rule syntax. Normalize these blocks after
+        # fenced code is protected so model-authored CommonMark never leaks source markers into the chat.
+        text = _normalize_markdown_blocks_for_telegram(text)
         # 2) Protect inline code; escape \ inside it per MarkdownV2 spec.
         text = re.sub(r'(`[^`]+`)', lambda m: _ph(m.group(0).replace('\\', '\\\\')), text)
         # 3) Links: escape display text; inside the URL only ')' and '\' need escaping.

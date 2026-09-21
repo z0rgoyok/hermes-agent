@@ -2,7 +2,7 @@
   "$comment": "GENERATED — do not hand-edit. Regenerate with hermes-agent scripts/generate_conformance_vectors.py; the native renderers are the oracle (executable spec).",
   "oracle": {
     "repo": "NousResearch/hermes-agent",
-    "commit": "40eebc7d70f3d8e95c429c8aa482f31ba6c867f6",
+    "commit": "e232cdf4bd608751a3d17ec8f30c7e11dcedf8b9",
     "generator": "scripts/generate_conformance_vectors.py",
     "generator_version": 1
   },
@@ -104,7 +104,7 @@
       "category": "grid",
       "expect": "semantic",
       "input": "- first\n- second\n- third",
-      "native_output": "\\- first\n\\- second\n\\- third"
+      "native_output": "• first\n• second\n• third"
     },
     {
       "id": "ol-list",
@@ -118,7 +118,7 @@
       "category": "grid",
       "expect": "semantic",
       "input": "- outer\n  - inner one\n  - inner two\n- outer two",
-      "native_output": "\\- outer\n  \\- inner one\n  \\- inner two\n\\- outer two"
+      "native_output": "• outer\n  • inner one\n  • inner two\n• outer two"
     },
     {
       "id": "blockquote",
@@ -132,7 +132,7 @@
       "category": "grid",
       "expect": "semantic",
       "input": "above\n\n---\n\nbelow",
-      "native_output": "above\n\n\\-\\-\\-\n\nbelow"
+      "native_output": "above\n\n────────\n\nbelow"
     },
     {
       "id": "table-simple",
@@ -168,7 +168,7 @@
       "category": "grid",
       "expect": "semantic",
       "input": "## Report\n\nStatus: **green**. Details in `runbook.md`.\n\n- item *one*\n- item **two**\n\n```sh\nmake deploy\n```\n\nSee [dashboard](https://grafana.example.com/d/x).",
-      "native_output": "*Report*\n\nStatus: *green*\\. Details in `runbook.md`\\.\n\n\\- item _one_\n\\- item *two*\n\n```sh\nmake deploy\n```\n\nSee [dashboard](https://grafana.example.com/d/x)\\."
+      "native_output": "*Report*\n\nStatus: *green*\\. Details in `runbook.md`\\.\n\n• item _one_\n• item *two*\n\n```sh\nmake deploy\n```\n\nSee [dashboard](https://grafana.example.com/d/x)\\."
     },
     {
       "id": "mdv2-reserved-chars",
