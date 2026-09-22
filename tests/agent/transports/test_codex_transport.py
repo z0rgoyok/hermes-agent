@@ -1757,6 +1757,19 @@ class TestCodexTransportXaiReasoningEffort:
 
         assert kw["reasoning"]["effort"] == "xhigh"
 
+    def test_grok_47_preserves_medium_and_priority(self, transport):
+        kw = transport.build_kwargs(
+            model="grok-4.7",
+            messages=[{"role": "user", "content": "hi"}],
+            tools=[],
+            is_xai_responses=True,
+            reasoning_config={"effort": "medium"},
+            request_overrides={"service_tier": "priority"},
+        )
+
+        assert kw["reasoning"]["effort"] == "medium"
+        assert kw["service_tier"] == "priority"
+
     @pytest.mark.parametrize("effort", ["max", "ultra"])
     def test_grok_46_clamps_hermes_aliases_to_model_ceiling(self, transport, effort):
         """Hermes ladder aliases mean "this model's ceiling" — on grok-4.6

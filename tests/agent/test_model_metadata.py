@@ -1943,6 +1943,13 @@ class TestGrok46StaleCacheGuard:
         assert ctx == 500_000
 
 
+def test_grok_47_metadata_matches_xai_reasoning_and_context_contract():
+    from agent.model_metadata import grok_supports_reasoning_effort
+
+    assert grok_supports_reasoning_effort("grok-4.7")
+    assert get_model_context_length("grok-4.7", provider="xai") == 500_000
+
+
 class TestGenericPreCatalogStaleGuard:
     """Generic _stale_pre_catalog_cache_entry guard: models whose catalog
     entry postdates a shorter catch-all (qwen3.6-plus, grok-4-fast,

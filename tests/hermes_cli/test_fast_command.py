@@ -123,7 +123,7 @@ class TestPriorityProcessingModels(unittest.TestCase):
 
 
 
-    def test_grok_46_supports_priority_processing(self):
+    def test_current_grok_families_support_priority_processing(self):
         from hermes_cli.models import (
             model_supports_fast_mode,
             resolve_fast_mode_overrides,
@@ -131,8 +131,10 @@ class TestPriorityProcessingModels(unittest.TestCase):
 
         assert model_supports_fast_mode("grok-4.6") is True
         assert model_supports_fast_mode("x-ai/grok-4.6-latest") is True
+        assert model_supports_fast_mode("grok-4.7") is True
         assert model_supports_fast_mode("grok-4.5") is False
         assert resolve_fast_mode_overrides("grok-4.6") == {"service_tier": "priority"}
+        assert resolve_fast_mode_overrides("grok-4.7", provider="xai-oauth", base_url="https://api.x.ai/v1") == {"service_tier": "priority"}
 
     def test_resolve_overrides_returns_service_tier(self):
         from hermes_cli.models import resolve_fast_mode_overrides
