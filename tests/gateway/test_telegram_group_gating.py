@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
-from gateway.config import Platform, PlatformConfig, load_gateway_config
+from gateway.config import GatewayConfig, Platform, PlatformConfig, load_gateway_config
 from gateway.platforms.event import MessageType
 from gateway.session import SessionSource
 
@@ -298,6 +298,35 @@ def test_shared_group_observe_source_is_authorized_by_group_allowed_chats(monkey
     monkeypatch.delenv("TELEGRAM_ALLOWED_CHATS", raising=False)
 
     assert runner._is_user_authorized(source) is True
+
+
+def test_model_command_targets_the_same_shared_session_as_group_messages():
+    from gateway.run import GatewayRunner
+
+    adapter = _make_adapter(
+        allowed_chats=["-100"], group_allowed_chats=["-100"],
+        observe_unmentioned_group_messages=True,
+    )
+    runner = object.__new__(GatewayRunner)
+    runner.config = GatewayConfig(platforms={Platform.TELEGRAM: adapter.config})
+    runner.adapters = {Platform.TELEGRAM: adapter}
+    runner._recover_telegram_topic_thread_id = lambda _source: None
+
+    command_source = SessionSource(
+        platform=Platform.TELEGRAM, chat_id="-100", chat_type="group",
+        user_id="111", user_name="Alice",
+    )
+    command_source = runner._normalize_source_for_session_key(command_source)
+    message_source = adapter._telegram_group_observe_shared_source(command_source)
+
+    assert runner._session_key_for_source(command_source) == runner._session_key_for_source(message_source)
+    assert command_source.user_id is None
+
+    outside = SessionSource(platform=Platform.TELEGRAM, chat_id="-200", chat_type="group", user_id="111")
+    direct = SessionSource(platform=Platform.TELEGRAM, chat_id="111", chat_type="dm", user_id="111")
+
+    assert runner._normalize_source_for_session_key(outside).user_id == "111"
+    assert runner._normalize_source_for_session_key(direct).user_id == "111"
 
 
 class _FakeSessionEntry:

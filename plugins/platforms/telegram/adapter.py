@@ -5923,7 +5923,22 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _telegram_group_observe_shared_source(self, source):
         """Return a chat/topic-scoped source for observed Telegram group context."""
-        return dataclasses.replace(source, user_id=None, user_name=None, user_id_alt=None)
+        from gateway.session_identity import replace_source
+        return replace_source(source, user_id=None, user_name=None, user_id_alt=None)
+
+    def session_source_for_command(self, source):
+        """Use the observed group's shared session for session-scoped slash settings.
+
+        Command intake keeps the sender identity for authorization; only the session
+        lookup after authorization is shared with ordinary group messages.
+        """
+        if (
+            source.chat_type == "group"
+            and self._telegram_observe_unmentioned_group_messages()
+            and source.chat_id in self._telegram_observe_allowed_chats()
+        ):
+            return self._telegram_group_observe_shared_source(source)
+        return source
 
     def _telegram_group_observe_attributed_text(self, event: MessageEvent) -> str:
         user_id = event.source.user_id or "unknown"
