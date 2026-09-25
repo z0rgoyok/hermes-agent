@@ -156,6 +156,10 @@ class TestShouldExclude:
         assert _should_exclude(Path("state.db-shm"))
         assert _should_exclude(Path("state.db-journal"))
         assert _should_exclude(Path("memory_store.db-wal"))
+        for name in ("queue.sqlite", "queue.sqlite3"):
+            for sidecar in ("-wal", "-shm", "-journal"):
+                assert _should_exclude(Path("invoice-intake") / f"{name}{sidecar}")
+            assert not _should_exclude(Path("invoice-intake") / name)
         # The .db itself is still included (and safe-copied separately)
         assert not _should_exclude(Path("state.db"))
 
@@ -639,6 +643,62 @@ class TestImport:
 # ---------------------------------------------------------------------------
 
 class TestRoundTrip:
+    @pytest.mark.parametrize("queue_name", ["queue.sqlite", "queue.sqlite3"])
+    def test_live_invoice_queue_and_original_survive_backup_and_import(
+        self, tmp_path, monkeypatch, queue_name
+    ):
+        """A committed WAL row and its image must survive a live full backup."""
+        from hermes_cli.backup import run_backup, run_import
+
+        src_home = tmp_path / "source" / ".hermes"
+        intake = src_home / "invoice-intake"
+        originals = intake / "originals"
+        originals.mkdir(parents=True)
+        (src_home / "config.yaml").write_text("model: {}\n")
+        original = originals / "document.jpg"
+        original.write_bytes(b"original invoice image")
+        queue = intake / queue_name
+        writer = sqlite3.connect(queue)
+        try:
+            assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+            writer.execute("PRAGMA wal_autocheckpoint=0")
+            writer.execute("CREATE TABLE documents (id TEXT PRIMARY KEY, filename TEXT NOT NULL)")
+            writer.execute("INSERT INTO documents VALUES (?, ?)", ("document", original.name))
+            writer.commit()
+            assert (intake / f"{queue_name}-wal").exists()
+
+            monkeypatch.setenv("HERMES_HOME", str(src_home))
+            monkeypatch.setattr(Path, "home", lambda: tmp_path / "source")
+            archive = tmp_path / "invoice-backup.zip"
+            assert run_backup(Namespace(output=str(archive))) is True
+
+            with zipfile.ZipFile(archive) as zf:
+                names = set(zf.namelist())
+                assert f"invoice-intake/{queue_name}" in names
+                assert "invoice-intake/originals/document.jpg" in names
+                assert not any(f"invoice-intake/{queue_name}{suffix}" in names
+                               for suffix in ("-wal", "-shm", "-journal"))
+
+            dest_home = tmp_path / "dest" / ".hermes"
+            dest_home.mkdir(parents=True)
+            dest_queue = dest_home / "invoice-intake" / queue_name
+            dest_queue.parent.mkdir()
+            with sqlite3.connect(dest_queue) as existing:
+                existing.execute("CREATE TABLE previous (value TEXT)")
+            original_inode = dest_queue.stat().st_ino
+            monkeypatch.setenv("HERMES_HOME", str(dest_home))
+            monkeypatch.setattr(Path, "home", lambda: tmp_path / "dest")
+            run_import(Namespace(zipfile=str(archive), force=True))
+            if os.name != "nt":
+                assert dest_queue.stat().st_ino == original_inode
+            assert (dest_home / "invoice-intake/originals/document.jpg").read_bytes() == original.read_bytes()
+            with sqlite3.connect(dest_queue) as restored:
+                assert restored.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                assert restored.execute("SELECT id, filename FROM documents").fetchall() == [
+                    ("document", "document.jpg")]
+        finally:
+            writer.close()
+
     def test_backup_then_import(self, tmp_path, monkeypatch):
         """Full round-trip: backup -> import to a new location -> verify."""
         # Source

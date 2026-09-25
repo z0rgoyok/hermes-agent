@@ -701,6 +701,48 @@ class GatewaySessionCommandsMixin:
 
     # ------------------------------------------------------------------ /save, /title
 
+    async def _handle_jamarchive_command(self, event: MessageEvent) -> str:
+        """Request the operator-owned archive service from its single Telegram group."""
+        source = event.source
+        if source.platform != Platform.TELEGRAM or source.chat_type not in {"group", "forum"}:
+            return "Архив доступен только в настроенной группе Jam."
+        adapter = self._delivery_adapter_for(source)
+        if adapter is None:
+            return "Не удалось проверить настройки группы Jam."
+        try:
+            groups = adapter._telegram_group_allowed_chats()
+            chats = adapter._telegram_allowed_chats()
+            topics = adapter._telegram_allowed_topics()
+        except Exception:
+            logger.warning("Failed to resolve Jam archive Telegram group", exc_info=True)
+            return "Не удалось проверить настройки группы Jam."
+        if len(groups) != 1 or groups != chats or str(source.chat_id) not in groups:
+            return "Архив доступен только в настроенной группе Jam."
+        if topics and (len(topics) != 1 or str(source.thread_id or "1") not in topics):
+            return "Архив доступен только в настроенной теме группы Jam."
+        if (event.get_command_args() or "").strip():
+            return "Используйте /jamarchive без аргументов."
+
+        command = ("sudo", "-n", "/usr/bin/systemctl", "start", "--no-block",
+                   "jam-hermes-archive.service")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            try:
+                exit_code = await asyncio.wait_for(process.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                logger.warning("Jam archive systemctl start timed out")
+                return "Не удалось запустить архив: истекло время ожидания."
+        except OSError:
+            logger.warning("Jam archive systemctl start failed", exc_info=True)
+            return "Не удалось запустить архив."
+        if exit_code != 0:
+            logger.warning("Jam archive systemctl start exited with code %s", exit_code)
+            return "Не удалось запустить архив."
+        return "Архив запущен. Файл и итоговый статус придут в эту группу."
+
     async def _handle_save_command(self, event: MessageEvent) -> str:
         """Handle /save — export the current session and send it as a document."""
         import tempfile

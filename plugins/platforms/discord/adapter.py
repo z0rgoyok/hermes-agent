@@ -4431,7 +4431,8 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 pass
             config_overrides = _resolve_config_gates()
             for cmd_def in COMMAND_REGISTRY:
-                if _is_gateway_available(cmd_def, config_overrides):
+                if (_is_gateway_available(cmd_def, config_overrides)
+                        and (not cmd_def.gateway_platforms or "discord" in cmd_def.gateway_platforms)):
                     _auto_register(cmd_def.name, cmd_def.description, cmd_def.args_hint)
             logger.debug("Discord auto-registered %d commands from COMMAND_REGISTRY", len(already_registered))
         except Exception as e:

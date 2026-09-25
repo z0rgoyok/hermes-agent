@@ -20,10 +20,12 @@ _TG_INVALID_CHARS = re.compile(r"[^a-z0-9_]")
 _TG_MULTI_UNDERSCORE = re.compile(r"_{2,}")
 
 
-def _gateway_available_commands() -> list:
+def _gateway_available_commands(platform: str) -> list:
     """Registry entries visible on gateway surfaces (config gates read once)."""
     overrides = _resolve_config_gates()
-    return [cmd for cmd in COMMAND_REGISTRY if _is_gateway_available(cmd, overrides)]
+    return [cmd for cmd in COMMAND_REGISTRY
+            if _is_gateway_available(cmd, overrides)
+            and (not cmd.gateway_platforms or platform in cmd.gateway_platforms)]
 
 
 def _requires_argument(args_hint: str) -> bool:
@@ -90,7 +92,7 @@ def telegram_bot_commands(*, include_plugins: bool = True) -> list[tuple[str, st
     """(command_name, description) pairs for Telegram setMyCommands: sanitized canonical names
     only (no aliases). Built-ins needing arguments are included (their handlers show usage when
     selected bare); plugin commands needing arguments are excluded (may lack a no-arg fallback)."""
-    pairs = [(cmd.name, cmd.description) for cmd in _gateway_available_commands()]
+    pairs = [(cmd.name, cmd.description) for cmd in _gateway_available_commands("telegram")]
     if include_plugins:
         pairs += [(n, d) for n, d, hint in _iter_plugin_command_entries()
                   if not _requires_argument(hint)]
@@ -395,7 +397,7 @@ def slack_native_slashes() -> list[tuple[str, str, str]]:
     (canonical names first so they win slots at the cap, then aliases, then plugins) becomes a
     standalone slash, deduped and clamped to the 50-command cap; Slack built-ins and
     _SLACK_VIA_HERMES_ONLY are skipped. ``/hermes`` is always first for anything dropped."""
-    available = _gateway_available_commands()
+    available = _gateway_available_commands("slack")
     wanted = [(cmd.name, cmd.description, cmd.args_hint or "") for cmd in available]
     wanted += [(alias, f"Alias for /{cmd.name} — {cmd.description}", cmd.args_hint or "")
                for cmd in available for alias in cmd.aliases]
@@ -434,7 +436,7 @@ def slack_subcommand_map() -> dict[str, str]:
     """name/alias -> "/command" for the Slack ``/hermes`` handler, plugin commands included."""
     mapping: dict[str, str] = {
         name: f"/{name}"
-        for cmd in _gateway_available_commands() for name in (cmd.name, *cmd.aliases)}
+        for cmd in _gateway_available_commands("slack") for name in (cmd.name, *cmd.aliases)}
     for name, _description, _args_hint in _iter_plugin_command_entries():
         mapping.setdefault(name, f"/{name}")
     return mapping

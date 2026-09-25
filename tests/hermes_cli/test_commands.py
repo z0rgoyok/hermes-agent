@@ -183,7 +183,7 @@ class TestTelegramBotCommands:
         fake = CommandDef(name="dashy", description="does a \u2014 b \u2013 c",
                           category="Session")
         monkeypatch.setattr("hermes_cli.commands_platforms._gateway_available_commands",
-                            lambda: [fake])
+                            lambda _platform: [fake])
         monkeypatch.setattr("hermes_cli.commands_platforms._iter_plugin_command_entries",
                             lambda: iter([]))
         assert ("dashy", "does a - b - c") in telegram_bot_commands(
@@ -259,7 +259,8 @@ class TestSlackNativeSlashes:
         # Commands deliberately routed through /hermes <command> on Slack only
         # (Slack's 50-slash cap) are expected to be absent from native slashes.
         via_hermes_norm = {_norm(n) for n in _SLACK_VIA_HERMES_ONLY}
-        missing = (tg_norm - slack_norm) - reserved_norm - via_hermes_norm
+        platform_specific = {_norm(cmd.name) for cmd in COMMAND_REGISTRY if cmd.gateway_platforms}
+        missing = (tg_norm - slack_norm) - reserved_norm - via_hermes_norm - platform_specific
         assert not missing, (
             f"commands on Telegram but missing from Slack native slashes: {sorted(missing)}"
         )

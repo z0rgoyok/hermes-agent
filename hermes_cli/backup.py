@@ -93,10 +93,15 @@ def _in_excluded_root_dir(rel_path: Path) -> bool:
     return parts[0] == "cache" and len(parts) >= 2 and parts[1] not in _KEPT_CACHE_SUBDIRS
 
 
-# SQLite sidecars are excluded because ``*.db`` is snapshotted via ``sqlite3.backup()``:
+# SQLite sidecars are excluded because databases are snapshotted via ``sqlite3.backup()``:
 # shipping the live WAL/SHM/journal alongside would pair a fresh snapshot with stale sidecar
 # state and produce a torn restore on next open. They are regenerated on first connection.
-_SQLITE_SIDECAR_SUFFIXES = (".db-wal", ".db-shm", ".db-journal")
+_SQLITE_DB_SUFFIXES = (".db", ".sqlite", ".sqlite3")
+_SQLITE_SIDECAR_SUFFIXES = tuple(
+    db_suffix + sidecar_suffix
+    for db_suffix in _SQLITE_DB_SUFFIXES
+    for sidecar_suffix in ("-wal", "-shm", "-journal")
+)
 _EXCLUDED_SUFFIXES = (".pyc", ".pyo", *_SQLITE_SIDECAR_SUFFIXES)
 
 # File names to skip (runtime state that's meaningless on another machine)
@@ -582,7 +587,7 @@ def _zip_sqlite_snapshot(zf: zipfile.ZipFile, abs_path: Path, rel_path: Path, ou
 def _write_zip_entries(
     zf: zipfile.ZipFile, files_to_add: List[Tuple[Path, Path]], out_path: Path,
     *, on_db_failure, on_error, on_progress, track_bytes: bool) -> int:
-    """Add every ``(abs_path, rel_path)`` to *zf*, WAL-safe for ``*.db``; return bytes archived.
+    """Add every ``(abs_path, rel_path)`` to *zf*, WAL-safe for SQLite files; return bytes archived.
 
     ``on_db_failure(rel_path)`` runs when a SQLite snapshot fails (may raise to abort);
     ``on_error(rel_path, exc)`` records a read failure; ``on_progress(i)`` fires every 500 files;
@@ -591,7 +596,7 @@ def _write_zip_entries(
     total_bytes = 0
     for i, (abs_path, rel_path) in enumerate(files_to_add, 1):
         try:
-            if abs_path.suffix == ".db":
+            if abs_path.suffix in _SQLITE_DB_SUFFIXES:
                 size = _zip_sqlite_snapshot(zf, abs_path, rel_path, out_path)
                 if size is None:
                     on_db_failure(rel_path)
@@ -848,7 +853,7 @@ def _count_session_rows(path: Path) -> Optional[Tuple[int, int]]:
 
 def _import_db_member(
     zf: zipfile.ZipFile, member: str, target: Path, new_file_mode: Optional[int] = None) -> None:
-    """Publish a SQLite ``.db`` member onto *target* without replacing its inode.
+    """Publish a SQLite member onto *target* without replacing its inode.
 
     A rename-publish over a live database is the #65942 / #90950 corruption class: a gateway,
     dashboard, or WebUI holding it open keeps serving the unlinked inode and writing sessions no
@@ -930,7 +935,7 @@ def _import_members(
             if rel and Path(rel).name in _IMPORT_SKIP_NAMES:  # see ``_IMPORT_SKIP_NAMES``
                 skipped_runtime.append(rel)
                 continue
-            # A ``.db`` member is page-restored into the live file; an archived WAL/SHM/journal
+            # A SQLite member is page-restored into the live file; an archived WAL/SHM/journal
             # describes a different database image and installed beside it (over a live sidecar)
             # would replay a foreign WAL on next open. Current backups never ship these
             # (_EXCLUDED_SUFFIXES); older or hand-built archives might.
@@ -949,7 +954,7 @@ def _import_members(
         else:
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                if target.suffix == ".db":
+                if target.suffix in _SQLITE_DB_SUFFIXES:
                     # Count before the write: afterwards the dropped rows are gone.
                     before = _count_session_rows(target)
                     _import_db_member(zf, member, target, new_file_mode)
@@ -1175,14 +1180,14 @@ def _copy_quick_snapshot_files(
                 print(f"  ⚠ Snapshot: skipping {rel} "
                       f"({_format_size(size)} exceeds {_format_size(max_file_size)} limit)")
                 logger.warning("Quick snapshot skipped %s: %d bytes exceeds %d byte limit", rel, size, max_file_size)
-                if src.suffix == ".db":
+                if src.suffix in _SQLITE_DB_SUFFIXES:
                     oversized_skipped.append(rel)
                 continue
         dst = staging_dir / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         try:
             # SQLite DBs go through the WAL-safe backup() path (the gateway may hold the WAL open).
-            if src.suffix == ".db":
+            if src.suffix in _SQLITE_DB_SUFFIXES:
                 if not _safe_copy_db(src, dst):
                     failed_dbs.append(rel)
                     print(f"  ⚠ Snapshot: SQLite safe copy FAILED for {rel} — file may be locked or corrupted")
@@ -1337,7 +1342,7 @@ def restore_quick_snapshot(snapshot_id: str, hermes_home: Optional[Path] = None)
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         try:
-            if dst.suffix == ".db":
+            if dst.suffix in _SQLITE_DB_SUFFIXES:
                 # Through the backup API so live connections see the restored data instead of
                 # stale pages from a replaced inode (#65942).
                 if not _safe_restore_db(src, dst):
