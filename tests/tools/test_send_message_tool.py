@@ -411,6 +411,7 @@ class TestSendTelegramMediaDelivery:
 
         assert result["success"] is True
         assert result["message_id"] == "2"
+        assert result["media_delivered"] is True
         # No separate text send — the caption rides the photo bubble.
         bot.send_message.assert_not_awaited()
         bot.send_photo.assert_awaited_once()
@@ -439,6 +440,7 @@ class TestSendTelegramMediaDelivery:
         )
 
         assert result["success"] is True
+        assert result["media_delivered"] is True
         bot.send_voice.assert_awaited_once()
         bot.send_audio.assert_not_awaited()
         bot.send_message.assert_not_awaited()
@@ -465,6 +467,24 @@ class TestSendTelegramMediaDelivery:
         assert "error" in result
         assert "No deliverable text or media remained" in result["error"]
         bot.send_message.assert_not_awaited()
+
+    def test_text_receipt_does_not_claim_missing_media(self, monkeypatch):
+        bot = MagicMock()
+        bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=9))
+        bot.send_document = AsyncMock()
+        _install_telegram_mock(monkeypatch, bot)
+
+        result = asyncio.run(
+            _send_telegram(
+                "token", "12345", "Archive ready",
+                media_files=[("/tmp/does-not-exist.zip", False)],
+            )
+        )
+
+        assert result["success"] is True
+        assert result["media_delivered"] is False
+        assert result["warnings"]
+        bot.send_document.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
