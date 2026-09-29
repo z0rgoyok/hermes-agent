@@ -161,7 +161,9 @@ async def _telegram_send_media(bot, chat_id, f, ext, is_voice, force_document, *
     kind = next((k for exts, k in ((() if force_document else _IMAGE_EXTS, "photo"), (_VIDEO_EXTS, "video"),
                                     (_VOICE_EXTS if is_voice else (), "voice"), (_TELEGRAM_SEND_AUDIO_EXTS, "audio"))
                  if ext in exts), "document")
-    return await getattr(bot, f"send_{kind}")(chat_id=chat_id, **{kind: f}, **kwargs)
+    return await getattr(bot, f"send_{kind}")(
+        chat_id=chat_id, **{kind: f}, read_timeout=60, write_timeout=60,
+        connect_timeout=60, **kwargs)
 
 
 async def _telegram_send_text_chunk(bot, chat_id, chunk, parse_mode, has_html, text_kwargs):
