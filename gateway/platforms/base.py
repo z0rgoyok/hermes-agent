@@ -2263,6 +2263,14 @@ class BasePlatformAdapter(ABC):
         fanned out via ``HookRegistry.emit``."""
         self._reaction_handler = handler
 
+    def allows_intentional_silence(self, source) -> bool:
+        """Whether this conversation's intake policy permits a successful silent turn.
+
+        This delivery capability never grants access or changes the event's human identity.
+        Ordinary conversations keep the visible unexpected-silence fallback.
+        """
+        return False
+
     def set_authorization_check(
         self, callback: Optional[Callable[[str, Optional[str], Optional[str]], bool]]) -> None:
         """Register ``(user_id, chat_type, chat_id) -> bool``; adapters pulling external context

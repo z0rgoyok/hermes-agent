@@ -119,6 +119,29 @@ async def test_human_turn_gets_a_visible_fallback_for_a_silence_marker(monkeypat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("queued", [False, True])
+async def test_semantic_participant_silence_never_becomes_a_warning(monkeypatch, tmp_path, queued):
+    runner = _runner(monkeypatch, tmp_path)
+    runner._adapter_allows_intentional_silence = lambda source: True
+    result = {"final_response": "NO_REPLY", "messages": [], "tools": [],
+              "history_offset": 0, "last_prompt_tokens": 0, "api_calls": 1, "failed": False}
+    runner._run_agent = AsyncMock(return_value=result)
+    if queued:
+        runner._deliver_queued_first_response = AsyncMock()
+        turn_ctx = SimpleNamespace(
+            session_key="semantic-chat", stream_consumer_holder=[None], mute_notification_reply=False,
+            persist_user_display_kind=None, source=_source(), _status_thread_metadata=None,
+            event_message_id=None, inbound_message_id="thanks", run_generation=1)
+        await runner._run_agent_deliver_first_response(turn_ctx, None, result, result, None)
+        runner._deliver_queued_first_response.assert_not_awaited()
+    else:
+        event = _event()
+        event.text = "от души"
+        assert await runner._handle_message_with_agent(event, _source(), "semantic-chat", 1) == ""
+        assert not event.internal
+
+
+@pytest.mark.asyncio
 async def test_internal_silence_token_suppresses_delivery_but_preserves_transcript(monkeypatch, tmp_path):
     runner = _runner(monkeypatch, tmp_path)
     runner._run_agent = AsyncMock(return_value={

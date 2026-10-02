@@ -5545,6 +5545,16 @@ class TelegramAdapter(BasePlatformAdapter):
         """Chats where every human message is offered to the agent for a reply-or-silence decision."""
         return self._extra_str_set("semantic_participant_chats", "TELEGRAM_SEMANTIC_PARTICIPANT_CHATS")
 
+    def allows_intentional_silence(self, source) -> bool:
+        """Semantic participation may decline a reply without a user-facing warning."""
+        chat_id = str(source.chat_id or "")
+        return (
+            source.chat_type in {"group", "forum"}
+            and self._telegram_observe_unmentioned_group_messages()
+            and chat_id in self._telegram_semantic_participant_chats()
+            and chat_id in self._telegram_observe_allowed_chats()
+        )
+
     def _telegram_free_response_topics(self) -> set[str]:
         """Topic-level free-response entries as ``<chat_id>:<thread_id>`` (General topic = ``1``)."""
         return self._extra_str_set("free_response_topics", "TELEGRAM_FREE_RESPONSE_TOPICS")

@@ -462,6 +462,23 @@ def test_free_response_topic_messages_are_dispatched_not_observed():
     assert adapter._should_observe_unmentioned_group_message(other_topic) is True
 
 
+def test_silence_capability_is_limited_to_opted_in_observed_groups():
+    adapter = _make_adapter(
+        allowed_chats=["-200"], group_allowed_chats=["-200"],
+        observe_unmentioned_group_messages=True, semantic_participant_chats=["-200"],
+    )
+    source = SessionSource(platform=Platform.TELEGRAM, chat_id="-200", chat_type="group", user_id="111")
+    assert adapter.allows_intentional_silence(source) is True
+    assert source.user_id == "111"
+    source.chat_id = "-201"
+    assert adapter.allows_intentional_silence(source) is False
+    source.chat_id, source.chat_type = "-200", "dm"
+    assert adapter.allows_intentional_silence(source) is False
+    source.chat_type = "group"
+    adapter.config.extra['observe_unmentioned_group_messages'] = False
+    assert adapter.allows_intentional_silence(source) is False
+
+
 def test_semantic_participant_chat_dispatches_plain_human_message_with_silence_policy():
     adapter = _make_adapter(
         require_mention=True,

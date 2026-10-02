@@ -380,6 +380,12 @@ class GatewayTurnMixin:
         except Exception:
             return False
 
+    def _adapter_allows_intentional_silence(self, source) -> bool:
+        """Consult the owning adapter's explicit conversation policy, never inbound text."""
+        adapter = self._delivery_adapter_for(source)
+        policy = getattr(type(adapter), "allows_intentional_silence", None)
+        return bool(callable(policy) and policy(adapter, source) is True)
+
     async def _hmwa_resolve_session(self, event, source):
         """Resolve ``source`` to its session entry (topic recovery, internal-route guards, Telegram
         topic-binding heal). Returns ``(source, session_entry, session_key)`` or ``None`` to drop
@@ -1516,7 +1522,10 @@ class GatewayTurnMixin:
         # A queued (/queue) chain's TERMINAL turn owns the silence verdict, not the event that
         # opened the chain: an internal follow-up may go silent, a human one must not.
         _silence_kind = agent_result.get("queued_terminal_display_kind", persist_user_display_kind)
-        if _intentional_silence and not is_machinery_display_kind(_silence_kind):
+        _adapter_silence_allowed = agent_result.get(
+            "queued_terminal_silence_allowed", self._adapter_allows_intentional_silence(source),
+        ) is True
+        if _intentional_silence and not (is_machinery_display_kind(_silence_kind) or _adapter_silence_allowed):
             logger.warning(
                 "silence marker rejected on a user turn: platform=%s chat=%s",
                 _platform_name, source.chat_id or "unknown",
@@ -3680,7 +3689,8 @@ class GatewayTurnMixin:
         )
         # Same silence predicate as the normal path, else this branch leaks the literal marker.
         if self._is_intentional_silence(_delivery_result, first_response):
-            if is_machinery_display_kind(turn_ctx.persist_user_display_kind):
+            if (is_machinery_display_kind(turn_ctx.persist_user_display_kind)
+                    or self._adapter_allows_intentional_silence(turn_ctx.source)):
                 logger.info(
                     "Queued follow-up for session %s: suppressing intentional silence marker before continuing.",
                     session_key or "?",
@@ -3869,6 +3879,7 @@ class GatewayTurnMixin:
                 **merged,
                 "queued_terminal_inbound_id": next_inbound_id,
                 "queued_terminal_display_kind": next_display_kind,
+                "queued_terminal_silence_allowed": self._adapter_allows_intentional_silence(next_source),
                 "queued_terminal_notification_category": (
                     (pending_event.metadata or {}).get("notification_category", "result")
                     if pending_event is not None and pending_event.internal else "result"),
