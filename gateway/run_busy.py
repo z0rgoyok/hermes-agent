@@ -415,12 +415,24 @@ class GatewayBusySessionMixin:
         most once per message; on failure the caption (if any) is kept.
         """
         text = (event.text or "").strip()
-        if not self._pending_event_audio_paths(event):
-            return text
-        enriched_text, successful_transcripts = await self._transcribe_and_echo_pending_voice(
-            event, self._delivery_adapter_for(event.source), event.source, text, log_context="Busy-steer"
-        )
-        return (enriched_text or text).strip() if successful_transcripts else text
+        if self._pending_event_audio_paths(event):
+            enriched_text, successful_transcripts = await self._transcribe_and_echo_pending_voice(
+                event, self._delivery_adapter_for(event.source), event.source, text, log_context="Busy-steer"
+            )
+            if successful_transcripts:
+                text = (enriched_text or text).strip()
+        text = self._prepend_inbound_document_notes(event, text)
+        # Mid-turn steer accepts text. Expose downloaded media through existing tools;
+        # native image buffers are consumed only when a new conversation turn starts.
+        from gateway.run import _event_media_is_audio, _event_media_is_image, _event_media_is_video
+        import json
+        for i, path in enumerate(event.media_urls or []):
+            if any(check(event, i) for check in (
+                _event_media_is_audio, _event_media_is_image, _event_media_is_video,
+            )):
+                name, agent_path = self._inbound_attachment_display_name(path)
+                text += f"\n[Attached media: {json.dumps(name)} at {json.dumps(agent_path)}. Use the available media/file tools to inspect it.]"
+        return self._prepend_inbound_reply_context(event, event.source, text).strip()
 
     def _steer_text_with_origin(self, text: str, event: MessageEvent) -> str:
         """Keep event origin in this injection, never in the cached system prompt."""
@@ -581,15 +593,7 @@ class GatewayBusySessionMixin:
         )
         if effective_mode == "steer":
             steer_text = await self._prepare_busy_steer_text(event)
-            # Steerable: plain text, OR every attachment is voice media folded into steer_text.
-            # A follow-up qualifies for steering when it is plain text, OR when every attachment is
-            # STT-eligible voice media whose transcript was just folded into steer_text — otherwise a voice
-            # note in steer mode silently degrades to queue mode (#58780).
-            _steer_media_urls = getattr(event, "media_urls", None) or []
-            _steer_all_voice = bool(_steer_media_urls) and (
-                len(self._pending_event_audio_paths(event)) == len(_steer_media_urls)
-            )
-            if steer_text and (plain_text or _steer_all_voice) and agent_live and hasattr(running_agent, "steer"):
+            if steer_text and agent_live and hasattr(running_agent, "steer"):
                 steered = self._try_agent_verb(
                     running_agent, "steer", steer_text, session_key, event=event
                 )

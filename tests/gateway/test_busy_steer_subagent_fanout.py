@@ -67,3 +67,27 @@ def test_busy_steer_ack_names_subagents(tmp_path, monkeypatch):
     without = runner._compose_busy_ack_message(_event(), 0.0, None, _Agent(), **kwargs)
     assert "subagent" in with_children
     assert "subagent" not in without
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mime,kind,suffix", [
+    ("application/zip", MessageType.DOCUMENT, ".zip"),
+    ("image/png", MessageType.PHOTO, ".png"),
+])
+async def test_busy_attachment_and_quote_reach_active_agent(tmp_path, monkeypatch, mime, kind, suffix):
+    monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
+    runner = GatewayRunner(config=GatewayConfig())
+    parent = _Agent()
+    runner._session_state("key").turn.agent = parent
+    attachment = tmp_path / ("forwarded" + suffix)
+    attachment.write_bytes(b"received attachment")
+    event = _event("")
+    event.message_type = kind
+    event.media_urls = [str(attachment)]
+    event.media_types = [mime]
+    event.reply_to_message_id = "original"
+    event.reply_to_text = "Use the previous design"
+    outcome = await runner._resolve_busy_steer_or_redirect(event, "key", "steer", parent)
+    assert outcome.steered and outcome.effective_mode == "steer"
+    assert str(attachment) in parent.payload
+    assert "Use the previous design" in parent.payload
