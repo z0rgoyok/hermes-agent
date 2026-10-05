@@ -291,10 +291,16 @@ class GatewayBusySessionMixin:
                 logger.warning("Steer into subagent %r failed: %s", getattr(child, "_delegate_id", child), exc)
         return accepted
 
+    def _steer_subagents_enabled(self) -> bool:
+        from gateway.run import _load_gateway_config
+        return (_load_gateway_config().get("gateway") or {}).get("steer_subagents", True) is not False
+
     def _steer_running_agent(self, running_agent: Any, text: str) -> bool:
         """``running_agent.steer(text)`` plus fan-out to its active subagents (see
         :meth:`_steer_active_subagents`); True when the parent or any child queued it."""
         accepted = bool(running_agent.steer(text))
+        if not self._steer_subagents_enabled():
+            return accepted
         return bool(self._steer_active_subagents(running_agent, text)) or accepted
 
     async def _session_has_compression_in_flight(self, session_key: str) -> bool:
@@ -705,7 +711,7 @@ class GatewayBusySessionMixin:
             except Exception:
                 pass
         status_detail = f" ({', '.join(status_parts)})" if status_parts else ""
-        if is_steer_mode and self._agent_has_active_subagents(running_agent):
+        if is_steer_mode and self._steer_subagents_enabled() and self._agent_has_active_subagents(running_agent):
             head = "⏩ Steered into current run and its active subagent(s)"
             tail = ". Your message arrives after their next tool call."
         elif is_steer_mode:
@@ -1039,7 +1045,7 @@ class GatewayBusySessionMixin:
         if not accepted:
             return "Steer rejected (empty payload)."
         preview = steer_text[:60] + ("..." if len(steer_text) > 60 else "")
-        target = "run and its active subagent(s)" if self._agent_has_active_subagents(running_agent) else "run"
+        target = "run and its active subagent(s)" if self._steer_subagents_enabled() and self._agent_has_active_subagents(running_agent) else "run"
         return f"⏩ Steer queued into current {target} — arrives after the next tool call: '{preview}'"
 
     async def _busy_goal_command(self, event: MessageEvent, quick_key: str, source):

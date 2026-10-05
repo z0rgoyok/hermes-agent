@@ -70,6 +70,38 @@ def test_busy_steer_ack_names_subagents(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["busy_steer_mode", "priority", "explicit_command"])
+async def test_coordinator_only_steer_keeps_delegated_assignment_intact(route, tmp_path, monkeypatch):
+    monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
+    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {"gateway": {"steer_subagents": False}})
+    runner = GatewayRunner(config=GatewayConfig())
+    child = _Agent()
+    parent = _Agent(children=[child])
+    runner._session_state("key").turn.agent = parent
+    event = _event("/steer status?" if route == "explicit_command" else "status?")
+    if route == "busy_steer_mode":
+        outcome = await runner._resolve_busy_steer_or_redirect(event, "key", "steer", parent)
+        assert outcome.steered and outcome.effective_mode == "steer"
+    elif route == "priority":
+        runner._hm_busy_steer(event, parent, "key")
+    else:
+        reply = await runner._busy_steer_command(event, "key", event.source)
+        assert "subagent" not in reply
+    assert parent.payload and parent.payload.endswith("status?")
+    assert child.payload is None
+
+
+def test_coordinator_only_ack_does_not_claim_child_delivery(tmp_path, monkeypatch):
+    monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
+    monkeypatch.setattr("gateway.run._load_gateway_config", lambda: {"gateway": {"steer_subagents": False}})
+    runner = GatewayRunner(config=GatewayConfig())
+    reply = runner._compose_busy_ack_message(_event(), 0.0, None, _Agent(children=[_Agent()]),
+            is_steer_mode=True, is_queue_mode=False, is_redirect_mode=False,
+            demoted_for_subagents=False, demoted_for_compression=False)
+    assert "subagent" not in reply
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mime,kind,suffix", [
     ("application/zip", MessageType.DOCUMENT, ".zip"),
     ("image/png", MessageType.PHOTO, ".png"),
