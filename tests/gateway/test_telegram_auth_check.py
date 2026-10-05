@@ -370,3 +370,18 @@ def test_multiplex_closure_handler_without_callback_falls_back_to_env(monkeypatc
     assert adapter._is_user_authorized_from_message(
         _make_message(from_user_id=555, chat_id=-100123, chat_type="group")
     ) is False
+
+
+def test_group_sender_override_admits_every_member_only_in_named_group():
+    adapter = _make_adapter(allow_from=['222'], group_allow_from=['222'],
+                            groups={'-100': {'allow_from': ['*']}})
+    for uid in [111, 1175299214, 987654321]:
+        assert adapter._is_user_authorized_from_message(_make_message(from_user_id=uid))
+        assert not adapter._is_user_authorized_from_message(_make_message(from_user_id=uid, chat_id=-200))
+        assert not adapter._is_user_authorized_from_message(_make_message(from_user_id=uid, chat_id=uid, chat_type='private'))
+
+
+def test_empty_group_sender_override_denies_even_global_allowed_sender():
+    adapter = _make_adapter(group_allow_from=['222'], groups={'-100': {'allow_from': []}})
+    assert not adapter._is_user_authorized_from_message(_make_message(from_user_id=222))
+    assert adapter._is_user_authorized_from_message(_make_message(from_user_id=222, chat_id=-200))

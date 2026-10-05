@@ -935,6 +935,11 @@ class TelegramAdapter(BasePlatformAdapter):
         # Adapter-level allow_from (DMs) / group_allow_from (groups) are the sole authority if set.
         adapter_allow_from = self.config.extra.get(
             "group_allow_from" if (source.chat_type or "") in ("group", "forum", "channel") else "allow_from")
+        if (source.chat_type or "") in ("group", "forum", "channel"):
+            groups = self.config.extra.get("groups", {})
+            group_config = groups.get(str(source.chat_id), {}) if isinstance(groups, dict) else {}
+            if isinstance(group_config, dict) and "allow_from" in group_config:
+                adapter_allow_from = group_config["allow_from"]
         if adapter_allow_from is not None:
             allowed = _coerce_allow_set(adapter_allow_from)
             authorized = user_id in allowed or "*" in allowed
