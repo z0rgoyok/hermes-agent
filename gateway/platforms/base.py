@@ -3255,8 +3255,12 @@ class BasePlatformAdapter(ABC):
         setStatus disables the compose box). Each ``send_typing`` is bounded by a sub-interval
         timeout so one slow round-trip is abandoned before the next tick, not the bubble lapsing."""
         _send_typing_timeout = max(0.25, min(1.5, interval - 0.25))
+        max_duration = float((getattr(self.config, "extra", None) or {}).get("typing_max_duration_seconds", 0))
+        typing_deadline = asyncio.get_running_loop().time() + max_duration if max_duration > 0 else None
         try:
             while True:
+                if typing_deadline is not None and asyncio.get_running_loop().time() >= typing_deadline:
+                    return
                 if stop_event is not None and stop_event.is_set():
                     return
                 if chat_id not in self._typing_paused:

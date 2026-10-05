@@ -84,3 +84,18 @@ async def test_typing_indicator_enabled_spawns_refresh_loop():
     assert adapter.send_typing.await_count >= 1
 
 
+
+
+@pytest.mark.asyncio
+async def test_typing_refresh_lease_expires_without_cancelling_work():
+    adapter = _make_adapter(True)
+    adapter.config.extra["typing_max_duration_seconds"] = 0.03
+    stopped = AsyncMock()
+    adapter.stop_typing = stopped
+    task = asyncio.create_task(adapter._keep_typing("chat", interval=0.01))
+    await asyncio.wait_for(task, timeout=2)
+    calls = adapter.send_typing.await_count
+    assert calls > 0
+    assert stopped.await_count == 1
+    await asyncio.sleep(0.03)
+    assert adapter.send_typing.await_count == calls
